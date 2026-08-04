@@ -587,6 +587,512 @@
                 }
             }
         }
+
+        .hero {
+            h1 span {
+                @apply block text-primary italic;
+            }
+
+            .demo {
+                @apply inline-flex items-center justify-center gap-2 border border-zinc-200 text-sm font-semibold text-zinc-700 transition-colors;
+
+                .icon {
+                    @apply h-3.5 w-3.5;
+                }
+            }
+
+            .studio-preview {
+                @apply w-full max-w-6xl mx-auto overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-950 text-left shadow-2xl;
+                box-shadow: 0 35px 90px -35px rgba(24, 24, 27, 0.42);
+
+                .studio-bar {
+                    @apply h-12 px-4 flex items-center border-b border-white/10 bg-zinc-900 text-white;
+
+                    .window-controls {
+                        @apply flex gap-1.5;
+
+                        span {
+                            @apply block h-2.5 w-2.5 rounded-full bg-zinc-600;
+                        }
+
+                        span:first-child {
+                            @apply bg-orange-500;
+                        }
+                    }
+
+                    .project-name {
+                        @apply absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-[11px] font-medium tracking-wide text-zinc-300;
+
+                        svg {
+                            @apply h-3.5 w-3.5;
+                        }
+                    }
+
+                    .live-state {
+                        @apply ml-auto flex items-center gap-2 text-[9px] uppercase tracking-[0.16em] text-zinc-400;
+
+                        span {
+                            @apply h-1.5 w-1.5 rounded-full bg-emerald-400;
+                            box-shadow: 0 0 10px rgba(52, 211, 153, 0.8);
+                        }
+                    }
+                }
+
+                .studio-body {
+                    @apply grid min-h-130;
+                    grid-template-columns: 54px minmax(0, 1fr) 280px;
+                }
+
+                .tool-rail {
+                    @apply flex flex-col items-center gap-3 border-r border-white/10 bg-zinc-900 py-5;
+
+                    button {
+                        @apply flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/10 hover:text-white;
+
+                        svg {
+                            @apply h-4 w-4;
+                        }
+
+                        &.active {
+                            @apply bg-primary text-white;
+                        }
+                    }
+                }
+
+                .render-canvas {
+                    @apply relative min-w-0 overflow-hidden bg-[#e8e2d8];
+
+                    .project-preview-media {
+                        @apply absolute inset-0 flex items-center justify-center overflow-hidden bg-[#ddd7ce];
+
+                        .preview-backdrop {
+                            @apply absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl;
+                        }
+
+                        .preview-image {
+                            @apply relative z-10 h-full w-full object-contain;
+                            filter: saturate(0.92) contrast(1.02);
+                        }
+                    }
+
+                    .render-label {
+                        @apply absolute z-10 flex items-center rounded-md border border-white/20 bg-black/65 text-white backdrop-blur-md;
+                    }
+
+                    .label-top {
+                        @apply left-4 top-4 gap-2 px-3 py-2 text-[9px] uppercase tracking-widest;
+
+                        svg {
+                            @apply h-3 w-3 text-orange-300;
+                        }
+                    }
+
+                    .label-bottom {
+                        @apply bottom-4 left-1/2 -translate-x-1/2 gap-1 p-1;
+
+                        span {
+                            @apply border-r border-white/15 px-2 py-1 text-[9px] text-zinc-300 last:border-0;
+                        }
+                    }
+                }
+
+                .prompt-panel {
+                    @apply flex flex-col border-l border-white/10 bg-zinc-900 p-5 text-white;
+
+                    .panel-title {
+                        @apply flex items-start justify-between border-b border-white/10 pb-4;
+
+                        div {
+                            @apply flex flex-col gap-1;
+                        }
+
+                        span {
+                            @apply text-[9px] uppercase tracking-[0.18em] text-zinc-500;
+                        }
+
+                        strong {
+                            @apply text-sm font-semibold;
+                        }
+
+                        svg {
+                            @apply h-4 w-4 text-orange-400;
+                        }
+                    }
+
+                    .prompt-copy {
+                        @apply my-5 rounded-lg border border-white/10 bg-white/5 p-4 text-xs leading-6 text-zinc-300;
+                    }
+
+                    .decision-list {
+                        @apply flex flex-col gap-3 text-[10px] text-zinc-400;
+
+                        div {
+                            @apply flex items-center gap-2;
+                        }
+
+                        svg {
+                            @apply h-3.5 w-3.5 text-emerald-400;
+                        }
+                    }
+
+                    .generate-button {
+                        @apply mt-auto flex items-center justify-between rounded-md bg-primary px-4 py-3 text-xs font-semibold text-white transition-colors hover:bg-orange-600;
+
+                        svg {
+                            @apply h-3.5 w-3.5;
+                        }
+                    }
+                }
+            }
+
+            .trust-row {
+                @apply mt-8 grid w-full max-w-5xl grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 md:grid-cols-4;
+
+                span {
+                    @apply bg-white px-4 py-3 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-500;
+                }
+            }
+        }
+
+        .section-inner {
+            @apply mx-auto max-w-7xl px-6;
+        }
+
+        .eyebrow {
+            @apply mb-4 text-[10px] font-bold uppercase tracking-[0.22em] text-primary;
+        }
+
+        .workflow {
+            @apply border-y border-zinc-200 bg-white py-24 md:py-32;
+
+            .section-intro {
+                @apply mb-14 grid items-end gap-5 md:grid-cols-2;
+
+                .eyebrow {
+                    @apply md:col-span-2 mb-0;
+                }
+
+                h2 {
+                    @apply max-w-xl text-5xl leading-none text-black md:text-6xl;
+                }
+
+                > p:last-child {
+                    @apply max-w-xl text-base leading-7 text-zinc-500 md:justify-self-end;
+                }
+            }
+
+            .workflow-grid {
+                @apply grid gap-4 md:grid-cols-3;
+            }
+
+            .workflow-card {
+                @apply flex min-h-84 flex-col rounded-2xl border border-zinc-200 bg-[#fdfbf7] p-7 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl;
+
+                .card-top {
+                    @apply mb-14 flex items-center justify-between;
+
+                    span {
+                        @apply font-mono text-[10px] text-zinc-400;
+                    }
+
+                    svg {
+                        @apply h-5 w-5 text-primary;
+                    }
+                }
+
+                h3 {
+                    @apply mb-3 text-3xl text-black;
+                }
+
+                > p {
+                    @apply text-sm leading-6 text-zinc-500;
+                }
+
+                a {
+                    @apply mt-auto flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-800 hover:text-primary;
+
+                    svg {
+                        @apply h-3.5 w-3.5;
+                    }
+                }
+            }
+        }
+
+        .delivery {
+            @apply bg-[#171715] py-24 text-white md:py-32;
+
+            .delivery-grid {
+                @apply grid items-center gap-14 lg:grid-cols-[0.9fr_1.1fr] lg:gap-24;
+            }
+
+            .delivery-copy {
+                h2 {
+                    @apply mb-6 text-5xl leading-none text-white md:text-6xl;
+                }
+
+                > p:not(.eyebrow) {
+                    @apply text-base leading-7 text-zinc-400;
+                }
+
+                ul {
+                    @apply my-8 grid gap-3 sm:grid-cols-2;
+                }
+
+                li {
+                    @apply flex items-center gap-2 text-sm text-zinc-300;
+
+                    svg {
+                        @apply h-4 w-4 text-emerald-400;
+                    }
+                }
+
+                > a {
+                    @apply inline-flex items-center gap-2 border-b border-orange-400 pb-1 text-xs font-bold uppercase tracking-wider text-white hover:text-orange-300;
+
+                    svg {
+                        @apply h-3.5 w-3.5;
+                    }
+                }
+            }
+
+            .delivery-board {
+                @apply overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl;
+
+                .board-head {
+                    @apply flex items-center justify-between border-b border-white/10 px-5 py-4;
+
+                    div {
+                        @apply flex flex-col gap-1;
+                    }
+
+                    div span {
+                        @apply text-[9px] uppercase tracking-widest text-zinc-500;
+                    }
+
+                    strong {
+                        @apply text-sm;
+                    }
+
+                    .ready-badge {
+                        @apply rounded-full bg-emerald-400/10 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-300;
+                    }
+                }
+
+                .board-render {
+                    @apply relative m-3 flex h-64 items-center justify-center overflow-hidden rounded-xl bg-zinc-950;
+
+                    .board-preview {
+                        @apply h-full w-full object-cover;
+                    }
+
+                    > span {
+                        @apply absolute bottom-3 left-3 rounded bg-black/60 px-2 py-1 text-[9px] uppercase tracking-wider text-white backdrop-blur;
+                    }
+                }
+
+                .board-files {
+                    @apply grid gap-px border-t border-white/10 bg-white/10;
+
+                    > div {
+                        @apply grid grid-cols-[28px_1fr_20px] items-center gap-3 bg-zinc-900 px-5 py-4;
+
+                        > svg:first-child {
+                            @apply h-4 w-4 text-zinc-500;
+                        }
+
+                        > svg:last-child {
+                            @apply h-4 w-4 text-emerald-400;
+                        }
+
+                        span {
+                            @apply flex flex-col gap-0.5;
+                        }
+
+                        strong {
+                            @apply text-xs text-zinc-200;
+                        }
+
+                        small {
+                            @apply text-[10px] text-zinc-500;
+                        }
+                    }
+                }
+            }
+        }
+
+        .project-types {
+            @apply bg-[#fdfbf7] py-24 md:py-32;
+
+            .section-inner {
+                @apply grid gap-4 md:grid-cols-3;
+            }
+
+            .project-type {
+                @apply relative flex min-h-105 flex-col justify-end overflow-hidden rounded-2xl border border-black/10 p-7 text-white shadow-sm;
+
+                &::after {
+                    content: "";
+                    @apply absolute inset-0 z-[1] pointer-events-none;
+                    background: linear-gradient(180deg, rgba(8, 8, 8, 0.02) 18%, rgba(8, 8, 8, 0.82) 100%);
+                }
+
+                .project-photo {
+                    @apply absolute inset-0 z-0 h-full w-full object-cover transition-transform duration-700;
+                }
+
+                &:hover .project-photo {
+                    @apply scale-105;
+                }
+
+                > span,
+                > h3,
+                > p {
+                    @apply relative z-10;
+                }
+
+                > span {
+                    @apply mb-auto w-fit rounded-full border border-white/25 bg-black/15 px-3 py-1 text-[9px] font-bold uppercase tracking-widest backdrop-blur;
+                }
+
+                h3 {
+                    @apply mb-3 text-3xl leading-none text-white;
+                }
+
+                p {
+                    @apply text-xs leading-5 text-white/70;
+                }
+            }
+
+            .residential {
+                .project-photo {
+                    object-position: 58% center;
+                }
+            }
+
+            .hospitality {
+                .project-photo {
+                    object-position: 52% center;
+                }
+            }
+
+            .workplace {
+                .project-photo {
+                    object-position: 60% center;
+                }
+            }
+        }
+
+        .final-cta {
+            @apply mx-4 mb-4 flex min-h-135 flex-col items-center justify-center overflow-hidden rounded-3xl bg-primary px-6 py-20 text-center text-white md:mx-6;
+            background:
+                radial-gradient(circle at 20% 10%, rgba(255,255,255,0.24), transparent 28%),
+                radial-gradient(circle at 85% 80%, rgba(116,45,0,0.25), transparent 30%),
+                #f97316;
+
+            .cta-mark {
+                @apply mb-8 flex h-12 w-12 items-center justify-center rounded-xl border border-white/30 bg-white/15;
+
+                svg {
+                    @apply h-6 w-6;
+                }
+            }
+
+            .eyebrow {
+                @apply text-white/70;
+            }
+
+            h2 {
+                @apply max-w-4xl text-5xl leading-none text-white md:text-7xl;
+            }
+
+            > p:not(.eyebrow) {
+                @apply mt-6 max-w-xl text-sm leading-6 text-white/75;
+            }
+
+            a {
+                @apply mt-9 inline-flex items-center gap-2 rounded-md bg-black px-6 py-3 text-xs font-bold uppercase tracking-wider text-white transition-transform hover:scale-105;
+
+                svg {
+                    @apply h-4 w-4;
+                }
+            }
+        }
+
+        .site-footer {
+            @apply mx-auto grid max-w-7xl items-center gap-5 px-6 py-10 text-xs text-zinc-500 md:grid-cols-[1fr_auto_auto_auto];
+
+            .footer-brand {
+                @apply flex items-center gap-2 text-black;
+
+                svg {
+                    @apply h-5 w-5;
+                }
+
+                span {
+                    @apply font-serif text-xl font-bold;
+                }
+            }
+
+            .footer-links {
+                @apply flex gap-5;
+
+                a {
+                    @apply hover:text-black;
+                }
+            }
+        }
+
+        @media (max-width: 900px) {
+            .hero .studio-preview {
+                .studio-body {
+                    grid-template-columns: 48px minmax(0, 1fr);
+                    min-height: 440px;
+                }
+
+                .prompt-panel {
+                    display: none;
+                }
+            }
+        }
+
+        @media (max-width: 640px) {
+            .navbar .inner {
+                @apply h-auto flex-wrap gap-3 py-3;
+
+                .left {
+                    @apply w-full flex-col items-start gap-3 space-x-0;
+
+                    .links {
+                        @apply w-full justify-between space-x-0;
+
+                        a {
+                            @apply text-xs;
+                        }
+                    }
+                }
+
+                .actions {
+                    @apply ml-auto;
+                }
+            }
+
+            .hero {
+                @apply pt-56;
+
+                .studio-preview .studio-bar .project-name {
+                    display: none;
+                }
+
+                .studio-preview .studio-body {
+                    grid-template-columns: 1fr;
+                    grid-template-rows: auto minmax(0, 1fr);
+                }
+
+                .studio-preview .tool-rail {
+                    @apply flex-row border-b border-r-0 px-4 py-2;
+                }
+            }
+        }
     }
 
     .visualizer-route {

@@ -27,10 +27,10 @@ const Navbar = () => {
               <span className="name">Roomie</span>
             </div>
             <ul className="links">
-              <li><a href="#">Products</a></li>
-              <li><a href="#">Pricing</a></li>
-              <li><a href="/#">Community</a></li>
-              <li><a href="#">Enterprise</a></li>
+              <li><a href="#product">Product</a></li>
+              <li><a href="#workflow">Workflow</a></li>
+              <li><a href="#projects">Projects</a></li>
+              <li><a href="#enterprise">Enterprise</a></li>
             </ul>
           </div>
           <div className="actions">
@@ -44,7 +44,7 @@ const Navbar = () => {
             ) : (
               <>
                 <Button onClick={handleAuthClick} size="sm" variant="ghost">Login</Button>
-                <a href="#upload" className="cta">Get Started</a>
+                <a href="#workspace" className="cta">Get Started</a>
 
               </>
             )}
