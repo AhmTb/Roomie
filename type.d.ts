@@ -88,6 +88,23 @@ interface HostedProjectAuthorization {
   accountVersion: string;
 }
 
+interface Generate3DViewParams {
+  sourceImage: string;
+  expectedOwnerUserId: string;
+  authorization: HostedProjectAuthorization;
+  signal?: AbortSignal;
+}
+
+interface Generate3DViewOptions {
+  beforeProviderRequest?: (signal?: AbortSignal) => Promise<boolean>;
+}
+
+interface Generated3DView {
+  renderedImage: string;
+  // Generated renders are transient and must not acquire a Puter storage path.
+  renderedPath: undefined;
+}
+
 interface VisualizerNavigationState {
   version: 1;
   project: DesignItem;
