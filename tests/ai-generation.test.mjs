@@ -136,6 +136,21 @@ test("generates with the pinned Puter image-to-image contract", async () => {
   );
 });
 
+test("uses the strict orthographic floor-plan render prompt", async () => {
+  const { ROOMIE_RENDER_PROMPT } = await loadGenerationModule();
+
+  assert.match(ROOMIE_RENDER_PROMPT, /REMOVE ALL TEXT/);
+  assert.match(ROOMIE_RENDER_PROMPT, /GEOMETRY MUST MATCH/);
+  assert.match(ROOMIE_RENDER_PROMPT, /Orthographic top-down view/);
+  assert.match(ROOMIE_RENDER_PROMPT, /NO EXTRA CONTENT/);
+  assert.match(
+    ROOMIE_RENDER_PROMPT,
+    /only where icons\/fixtures are clearly shown/,
+  );
+  assert.match(ROOMIE_RENDER_PROMPT, /no text, no watermarks, no logos/);
+  assert.doesNotMatch(ROOMIE_RENDER_PROMPT, /isometric/i);
+});
+
 test("fails before invoking AI when the owner does not match", async () => {
   const { generate3DViewWithDependencies } = await loadGenerationModule();
   const harness = createHarness();

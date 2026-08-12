@@ -1,4 +1,31 @@
-export const ROOMIE_RENDER_PROMPT = `Transform the supplied 2D architectural floor plan into a polished, photorealistic 3D isometric interior visualization. Preserve the exact wall layout, room boundaries, doors, windows, circulation, and proportions shown in the source. Furnish every room with realistic, appropriately scaled contemporary furniture and warm neutral materials. Use soft natural daylight, clean architectural visualization lighting, and a slightly elevated dollhouse camera angle that clearly shows the complete plan. Do not add, remove, merge, or relocate rooms, walls, doors, or windows. Do not include labels, dimensions, people, logos, watermarks, borders, or explanatory text.`;
+export const ROOMIE_RENDER_PROMPT = `TASK: Convert the input 2D floor plan into a **photorealistic, top-down 3D architectural render**.
+
+STRICT REQUIREMENTS (do not violate):
+1) **REMOVE ALL TEXT**: Do not render any letters, numbers, labels, dimensions, or annotations. Floors must be continuous where text used to be.
+2) **GEOMETRY MUST MATCH**: Walls, rooms, doors, and windows must follow the exact lines and positions in the plan. Do not shift or resize.
+3) **TOP-DOWN ONLY**: Orthographic top-down view. No perspective tilt.
+4) **CLEAN, REALISTIC OUTPUT**: Crisp edges, balanced lighting, and realistic materials. No sketch/hand-drawn look.
+5) **NO EXTRA CONTENT**: Do not add rooms, furniture, or objects that are not clearly indicated by the plan.
+
+STRUCTURE & DETAILS:
+- **Walls**: Extrude precisely from the plan lines. Consistent wall height and thickness.
+- **Doors**: Convert door swing arcs into open doors, aligned to the plan.
+- **Windows**: Convert thin perimeter lines into realistic glass windows.
+
+FURNITURE & ROOM MAPPING (only where icons/fixtures are clearly shown):
+- Bed icon → realistic bed with duvet and pillows.
+- Sofa icon → modern sectional or sofa.
+- Dining table icon → table with chairs.
+- Kitchen icon → counters with sink and stove.
+- Bathroom icon → toilet, sink, and tub/shower.
+- Office/study icon → desk, chair, and minimal shelving.
+- Porch/patio/balcony icon → outdoor seating or simple furniture (keep minimal).
+- Utility/laundry icon → washer/dryer and minimal cabinetry.
+
+STYLE & LIGHTING:
+- Lighting: bright, neutral daylight. High clarity and balanced contrast.
+- Materials: realistic wood/tile floors, clean walls, subtle shadows.
+- Finish: professional architectural visualization; no text, no watermarks, no logos.`;
 
 type GeneratedImage = { src?: string | null };
 
