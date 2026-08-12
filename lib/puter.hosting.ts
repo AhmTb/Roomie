@@ -1,6 +1,10 @@
 import puter from "@heyputer/puter.js";
 
-import { withPuterAccountLock } from "./puter.account";
+import {
+  hasPuterAccountLease,
+  withPuterAccountLock,
+} from "./puter.account";
+import type { PuterAccountLease } from "./puter.account";
 import {
   HOSTING_CONFIG_KEY,
   HOSTING_ROOT_DIRECTORY,
@@ -177,9 +181,26 @@ async function resolveHostingConfigWithLock(ownerUserId: string) {
   );
 }
 
-export async function getOrCreateHostingConfig(): Promise<HostingConfig | null> {
+export async function getOrCreateHostingConfig(
+  expectedOwnerUserId?: string,
+  accountLease?: PuterAccountLease,
+): Promise<HostingConfig | null> {
   const ownerUserId = await getCurrentOwnerUserId();
-  if (!ownerUserId) return null;
+  if (
+    !ownerUserId ||
+    (expectedOwnerUserId && ownerUserId !== expectedOwnerUserId)
+  ) {
+    return null;
+  }
+
+  if (hasPuterAccountLease(accountLease)) {
+    try {
+      return await resolveHostingConfig(ownerUserId);
+    } catch (error) {
+      console.warn("Failed to get or create Roomie hosting.", error);
+      return null;
+    }
+  }
 
   const activeRequest = hostingConfigRequests.get(ownerUserId);
   if (activeRequest) return activeRequest;
@@ -197,13 +218,10 @@ export async function getOrCreateHostingConfig(): Promise<HostingConfig | null> 
   return request;
 }
 
-export async function uploadImageToHosting({
-  hosting,
-  url,
-  projectId,
-  label,
-  signal,
-}: StoreHostedImageParams): Promise<HostedAsset | null> {
+export async function uploadImageToHosting(
+  { hosting, url, projectId, label, signal }: StoreHostedImageParams,
+  accountLease?: PuterAccountLease,
+): Promise<HostedAsset | null> {
   if (!hosting || !url) return null;
 
   try {
@@ -217,7 +235,7 @@ export async function uploadImageToHosting({
     const safeProjectId = assertSafePathSegment(projectId, "Project ID");
     const safeLabel = assertSafePathSegment(label, "Image label");
     if (isHostedUrl(url, hosting.subdomain)) {
-      return withPuterAccountLock(async () => {
+      const acceptHostedAsset = async () => {
         await assertCurrentOwner(hosting.ownerUserId);
         const parsedUrl = new URL(url);
         const expectedPath = new RegExp(
@@ -230,8 +248,12 @@ export async function uploadImageToHosting({
         ) {
           throw new Error("The hosted image does not match this project asset.");
         }
-        return { url: parsedUrl.toString() };
-      });
+        return { url: parsedUrl.toString(), wasWritten: false };
+      };
+
+      return hasPuterAccountLease(accountLease)
+        ? await acceptHostedAsset()
+        : await withPuterAccountLock(acceptHostedAsset);
     }
 
     const resolvedBlob =
@@ -241,23 +263,65 @@ export async function uploadImageToHosting({
     const verified = await verifyImageBlob(resolvedBlob);
     const publicPath = `projects/${safeProjectId}/${safeLabel}.${verified.extension}`;
     const filePath = `${hosting.rootDirectory}/${publicPath}`;
+    const hostedUrl = getHostedUrl(hosting.subdomain, publicPath);
+    if (!hostedUrl) {
+      throw new Error("The hosted image URL could not be resolved.");
+    }
 
     signal?.throwIfAborted();
-    return await withPuterAccountLock(async () => {
+    const writeHostedAsset = async () => {
       await assertCurrentOwner(hosting.ownerUserId);
       signal?.throwIfAborted();
       await puter.fs.write(filePath, verified.blob, {
         createMissingParents: true,
         dedupeName: false,
-        overwrite: true,
+        // Project IDs are immutable. Refuse collisions so rollback can never
+        // delete or replace a previously committed public asset.
+        overwrite: false,
       });
-      await assertCurrentOwner(hosting.ownerUserId);
+      return { url: hostedUrl, filePath, wasWritten: true };
+    };
 
-      const hostedUrl = getHostedUrl(hosting.subdomain, publicPath);
-      return hostedUrl ? { url: hostedUrl } : null;
-    });
+    return hasPuterAccountLease(accountLease)
+      ? await writeHostedAsset()
+      : await withPuterAccountLock(writeHostedAsset);
   } catch (error) {
     console.warn("Failed to store the hosted Roomie image.", error);
     return null;
+  }
+}
+
+export async function deleteHostedImage(
+  { hosting, asset }: DeleteHostedImageParams,
+  accountLease?: PuterAccountLease,
+) {
+  if (!asset.wasWritten || !asset.filePath) return true;
+  if (!isHostingConfig(hosting, hosting.ownerUserId)) return false;
+
+  const expectedRoot = `${hosting.rootDirectory}/projects/`;
+  if (
+    !asset.filePath.startsWith(expectedRoot) ||
+    !/\/(?:source|rendered)\.(?:jpg|png)$/.test(asset.filePath)
+  ) {
+    return false;
+  }
+
+  const deleteAsset = async () => {
+    await assertCurrentOwner(hosting.ownerUserId);
+    await puter.fs.delete(asset.filePath!);
+    await assertCurrentOwner(hosting.ownerUserId);
+    return true;
+  };
+
+  try {
+    return hasPuterAccountLease(accountLease)
+      ? await deleteAsset()
+      : await withPuterAccountLock(deleteAsset);
+  } catch (error) {
+    console.warn(
+      "Failed to clean up an incomplete Roomie project asset.",
+      error,
+    );
+    return false;
   }
 }

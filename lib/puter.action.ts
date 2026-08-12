@@ -1,19 +1,101 @@
 import puter from "@heyputer/puter.js";
 
-import { withPuterAccountLock } from "./puter.account";
 import {
+  finishPuterAccountMutation,
+  getPuterAccountVersion,
+  hasReliablePuterAccountCoordination,
+  startPuterAccountMutation,
+  withPuterAccountIntentLock,
+  withPuterAccountLock,
+} from "./puter.account";
+import {
+  deleteHostedImage,
   getOrCreateHostingConfig,
   uploadImageToHosting,
 } from "./puter.hosting";
 import { assertSafePathSegment, getHostedUrl } from "./utils";
 
 const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
+const PUTER_AUTH_TOKEN_KEY = "puter.auth.token.v2";
+const PUTER_AUTH_TOKEN_ORIGIN_KEY = "puter.auth.token.origin.v2";
 
-export const signIn = async () =>
-  withPuterAccountLock(() => puter.auth.signIn());
+function normalizeStoredValue(value: string | null) {
+  if (!value) return null;
+  const normalized = value.trim();
+  return normalized && normalized !== "null" && normalized !== "undefined"
+    ? normalized
+    : null;
+}
+
+export function synchronizePuterAuthTokenFromStorage() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const storedToken = normalizeStoredValue(
+      localStorage.getItem(PUTER_AUTH_TOKEN_KEY),
+    );
+    const storedOrigin = normalizeStoredValue(
+      localStorage.getItem(PUTER_AUTH_TOKEN_ORIGIN_KEY),
+    );
+    const currentOrigin = new URL(puter.APIOrigin).origin;
+    const defaultOrigin = new URL(puter.defaultAPIOrigin).origin;
+    let isOriginAllowed = currentOrigin === defaultOrigin;
+    if (storedOrigin) {
+      try {
+        isOriginAllowed = new URL(storedOrigin).origin === currentOrigin;
+      } catch {
+        isOriginAllowed = false;
+      }
+    }
+
+    if (!storedToken || !isOriginAllowed) {
+      puter.resetAuthToken();
+      return false;
+    }
+
+    if (puter.authToken !== storedToken) {
+      puter.setAuthToken(storedToken);
+    }
+    return true;
+  } catch (error) {
+    try {
+      puter.resetAuthToken();
+    } catch {
+      // The SDK is already unusable; the auth refresh will fail closed.
+    }
+    console.warn("Failed to synchronize the Puter account token.", error);
+    return false;
+  }
+}
+
+async function mutatePuterAccount(operation: () => Promise<unknown>) {
+  return withPuterAccountIntentLock(async () => {
+    const version = startPuterAccountMutation();
+
+    try {
+      return await withPuterAccountLock(operation);
+    } finally {
+      finishPuterAccountMutation(version);
+    }
+  });
+}
+
+export const signIn = async () => mutatePuterAccount(() => puter.auth.signIn());
 
 export const signOut = async () =>
-  withPuterAccountLock(() => puter.auth.signOut());
+  mutatePuterAccount(async () => puter.auth.signOut());
+
+export function getHostedProjectAuthorization(
+  expectedOwnerUserId: string,
+): HostedProjectAuthorization | null {
+  if (!expectedOwnerUserId || !hasReliablePuterAccountCoordination()) {
+    return null;
+  }
+  return {
+    expectedOwnerUserId,
+    accountVersion: getPuterAccountVersion(),
+  };
+}
 
 export const getCurrentUser = async () => {
   try {
@@ -62,92 +144,191 @@ function isCreateProjectItem(value: unknown): value is CreateProjectItem {
 export async function createProject({
   item,
   visibility,
+  expectedOwnerUserId,
+  authorization,
   signal,
+  commit,
 }: CreateProjectParams): Promise<DesignItem | null> {
   if (
     !isCreateProjectItem(item) ||
-    (visibility !== "private" && visibility !== "public")
+    (visibility !== "private" && visibility !== "public") ||
+    typeof expectedOwnerUserId !== "string" ||
+    !expectedOwnerUserId.trim() ||
+    !authorization ||
+    typeof authorization !== "object" ||
+    authorization.expectedOwnerUserId !== expectedOwnerUserId ||
+    typeof authorization.accountVersion !== "string" ||
+    !authorization.accountVersion ||
+    typeof commit !== "function"
   ) {
     console.warn("Failed to create project: invalid project information.");
     return null;
   }
 
-  try {
-    const safeProjectId = assertSafePathSegment(item.id, "Project ID");
-    signal?.throwIfAborted();
-    const hosting = await getOrCreateHostingConfig();
-    if (!hosting) return null;
-
-    const hostedSource = await uploadImageToHosting({
-      hosting,
-      url: item.sourceImage,
-      projectId: safeProjectId,
-      label: "source",
-      signal,
-    });
-    const sourcePath = hostedSource
-      ? getHostedPath(hostedSource.url)
-      : null;
-    signal?.throwIfAborted();
-
-    if (!hostedSource || !sourcePath) {
-      console.warn("Failed to host the source image; project was not created.");
-      return null;
-    }
-
-    const hostedRender = item.renderedImage
-      ? await uploadImageToHosting({
-          hosting,
-          url: item.renderedImage,
-          projectId: safeProjectId,
-          label: "rendered",
-          signal,
-        })
-      : null;
-    signal?.throwIfAborted();
-
-    if (item.renderedImage && !hostedRender) {
-      console.warn("Failed to host the rendered image; project was not created.");
-      return null;
-    }
-
-    const renderedPath = hostedRender
-      ? getHostedPath(hostedRender.url) ?? undefined
-      : undefined;
-
-    if (hostedRender && !renderedPath) {
-      console.warn("Failed to resolve the rendered image path.");
-      return null;
-    }
-
-    const publicPath = getHostedUrl(
-      hosting.subdomain,
-      `projects/${safeProjectId}`,
+  if (!hasReliablePuterAccountCoordination()) {
+    console.warn(
+      "Failed to create project: this browser cannot safely coordinate Puter account changes across tabs.",
     );
-
-    if (!publicPath) {
-      console.warn("Failed to resolve the hosted project path.");
-      return null;
-    }
-
-    return {
-      id: safeProjectId,
-      name: item.name.trim(),
-      sourceImage: hostedSource.url,
-      renderedImage: hostedRender?.url,
-      timestamp: item.timestamp,
-      ownerId: hosting.ownerUserId,
-      visibility,
-      assetAccess: "public-hosted",
-      sourcePath,
-      renderedPath,
-      publicPath,
-      fileName: item.fileName,
-      fileSize: item.fileSize,
-      mimeType: item.mimeType,
-    };
-  } catch (error) {
-    console.warn("Failed to create Roomie project.", error);
     return null;
   }
+
+  const safeProjectId = (() => {
+    try {
+      return assertSafePathSegment(item.id, "Project ID");
+    } catch (error) {
+      console.warn("Failed to create Roomie project.", error);
+      return null;
+    }
+  })();
+  if (!safeProjectId) return null;
+  const authorizedAccountVersion = authorization.accountVersion;
+
+  return withPuterAccountIntentLock(() =>
+    withPuterAccountLock(async (accountLease) => {
+      let activeHosting: HostingConfig | null = null;
+      let undoCommit: (() => void) | null = null;
+      const writtenAssets: HostedAsset[] = [];
+
+      const trackWrittenAsset = (asset: HostedAsset | null) => {
+        if (asset?.wasWritten) {
+          writtenAssets.push(asset);
+        }
+        return asset;
+      };
+
+      const rollBackWrites = async () => {
+        if (!activeHosting) return;
+
+        for (const asset of [...writtenAssets].reverse()) {
+          await deleteHostedImage(
+            { hosting: activeHosting, asset },
+            accountLease,
+          );
+        }
+      };
+
+      try {
+      signal?.throwIfAborted();
+      if (getPuterAccountVersion() !== authorizedAccountVersion) {
+        throw new Error("The Puter account changed before upload.");
+      }
+      const currentUser = await puter.auth.getUser();
+      if (currentUser?.uuid !== expectedOwnerUserId) {
+        throw new Error("The signed-in Puter account changed before upload.");
+      }
+      signal?.throwIfAborted();
+
+      const hosting = await getOrCreateHostingConfig(
+        expectedOwnerUserId,
+        accountLease,
+      );
+      if (!hosting || hosting.ownerUserId !== expectedOwnerUserId) {
+        throw new Error("Roomie hosting is unavailable for this account.");
+      }
+      activeHosting = hosting;
+      signal?.throwIfAborted();
+
+      const hostedSource = trackWrittenAsset(
+        await uploadImageToHosting(
+          {
+            hosting,
+            url: item.sourceImage,
+            projectId: safeProjectId,
+            label: "source",
+            signal,
+          },
+          accountLease,
+        ),
+      );
+      const sourcePath = hostedSource
+        ? getHostedPath(hostedSource.url)
+        : null;
+      signal?.throwIfAborted();
+
+      if (!hostedSource || !sourcePath) {
+        throw new Error("Failed to host the source image.");
+      }
+
+      const hostedRender = item.renderedImage
+        ? trackWrittenAsset(
+            await uploadImageToHosting(
+              {
+                hosting,
+                url: item.renderedImage,
+                projectId: safeProjectId,
+                label: "rendered",
+                signal,
+              },
+              accountLease,
+            ),
+          )
+        : null;
+      signal?.throwIfAborted();
+
+      if (item.renderedImage && !hostedRender) {
+        throw new Error("Failed to host the rendered image.");
+      }
+
+      const renderedPath = hostedRender
+        ? getHostedPath(hostedRender.url) ?? undefined
+        : undefined;
+      if (hostedRender && !renderedPath) {
+        throw new Error("Failed to resolve the rendered image path.");
+      }
+
+      const publicPath = getHostedUrl(
+        hosting.subdomain,
+        `projects/${safeProjectId}`,
+      );
+      if (!publicPath) {
+        throw new Error("Failed to resolve the hosted project path.");
+      }
+
+      signal?.throwIfAborted();
+      if (getPuterAccountVersion() !== authorizedAccountVersion) {
+        throw new Error("The Puter account changed during upload.");
+      }
+      const confirmedUser = await puter.auth.getUser();
+      if (confirmedUser?.uuid !== expectedOwnerUserId) {
+        throw new Error("The signed-in Puter account changed during upload.");
+      }
+      signal?.throwIfAborted();
+      const payload: DesignItem = {
+        id: safeProjectId,
+        name: item.name.trim(),
+        sourceImage: hostedSource.url,
+        renderedImage: hostedRender?.url,
+        timestamp: item.timestamp,
+        ownerId: hosting.ownerUserId,
+        visibility,
+        assetAccess: "public-hosted",
+        sourcePath,
+        renderedPath,
+        publicPath,
+        fileName: item.fileName,
+        fileSize: item.fileSize,
+        mimeType: item.mimeType,
+      };
+      // Keep both account locks until React Router confirms the owner-bound
+      // browser handoff. If a later step fails, undo local state before the
+      // public files are removed.
+      undoCommit = await commit(payload);
+      return payload;
+      } catch (error) {
+        if (undoCommit) {
+          try {
+            undoCommit();
+          } catch (undoError) {
+            console.warn(
+              "Failed to roll back incomplete Roomie project state.",
+              undoError,
+            );
+          }
+        }
+        await rollBackWrites();
+        console.warn("Failed to create Roomie project.", error);
+        return null;
+      }
+    }),
+  );
 }

@@ -24,6 +24,8 @@ interface HostingConfig {
 
 interface HostedAsset {
   url: string;
+  filePath?: string;
+  wasWritten: boolean;
 }
 
 interface StoreHostedImageParams {
@@ -32,6 +34,11 @@ interface StoreHostedImageParams {
   projectId: string;
   label: HostedImageLabel;
   signal?: AbortSignal;
+}
+
+interface DeleteHostedImageParams {
+  hosting: HostingConfig;
+  asset: HostedAsset;
 }
 
 // Project record visibility is separate from public Puter-hosted asset access.
@@ -70,7 +77,15 @@ type CreateProjectItem = Pick<
 interface CreateProjectParams {
   item: CreateProjectItem;
   visibility: ProjectVisibility;
+  expectedOwnerUserId: string;
+  authorization: HostedProjectAuthorization;
   signal?: AbortSignal;
+  commit: (project: DesignItem) => Promise<() => void>;
+}
+
+interface HostedProjectAuthorization {
+  expectedOwnerUserId: string;
+  accountVersion: string;
 }
 
 interface VisualizerNavigationState {

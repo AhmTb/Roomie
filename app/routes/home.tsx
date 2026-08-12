@@ -16,12 +16,16 @@ import { Link, useNavigate, useOutletContext } from "react-router";
 
 import Navbar from "../../components/Navbar";
 import FloorPlanUpload from "../../components/Upload";
-import { createProject } from "../../lib/puter.action";
+import {
+  createProject,
+  getHostedProjectAuthorization,
+} from "../../lib/puter.action";
 import {
   createFloorPlanUploadSession,
   createVisualizerNavigationState,
   getFloorPlanUploadSession,
   listFloorPlanProjectsForOwner,
+  removeFloorPlanUploadSession,
 } from "../../lib/upload";
 import type { Route } from "./+types/home";
 
@@ -97,7 +101,8 @@ export default function Home() {
   }, [isAuthReady, isAuthTransitioning, isSignedIn, userId]);
 
   const handleUploadComplete = useCallback(
-    async (base64Data: string, file: File) => {
+    async (base64Data: string, file: File, signal: AbortSignal) => {
+      signal.throwIfAborted();
       const currentAuth = getAuthSnapshot();
 
       if (
@@ -111,6 +116,10 @@ export default function Home() {
       const projectId = globalThis.crypto?.randomUUID?.();
       if (!projectId) {
         throw new Error("Secure project IDs are unavailable in this browser.");
+      }
+      const authorization = getHostedProjectAuthorization(currentAuth.userId);
+      if (!authorization) {
+        throw new Error("Roomie could not authorize this hosted project.");
       }
 
       const saved = await createProject({
@@ -127,27 +136,68 @@ export default function Home() {
         // Project discovery remains owner-bound even though Puter hosting URLs
         // are public to anyone who has the link.
         visibility: "private",
-      });
-      const currentAuthAfterSave = getAuthSnapshot();
+        expectedOwnerUserId: currentAuth.userId,
+        authorization,
+        signal,
+        commit: async (hostedProject) => {
+          let didCreateSession = false;
 
-      if (
-        !saved ||
-        currentAuthAfterSave.isAuthTransitioning ||
-        !currentAuthAfterSave.isSignedIn ||
-        !currentAuthAfterSave.userId ||
-        currentAuthAfterSave.userId !== saved.ownerId
-      ) {
+          try {
+            signal.throwIfAborted();
+            const currentAuthBeforeCommit = getAuthSnapshot();
+            if (
+              currentAuthBeforeCommit.isAuthTransitioning ||
+              !currentAuthBeforeCommit.isSignedIn ||
+              currentAuthBeforeCommit.userId !== hostedProject.ownerId
+            ) {
+              throw new Error("The signed-in account changed before save.");
+            }
+
+            const upload = createFloorPlanUploadSession(hostedProject, file);
+            didCreateSession = true;
+            const navigationState = createVisualizerNavigationState(upload);
+            setProjects((currentProjects) => [
+              hostedProject,
+              ...currentProjects.filter(
+                (project) => project.id !== hostedProject.id,
+              ),
+            ]);
+            await navigate(`/visualizer/${hostedProject.id}`, {
+              state: navigationState,
+              flushSync: true,
+            });
+          } catch (error) {
+            if (didCreateSession) {
+              removeFloorPlanUploadSession(
+                hostedProject.id,
+                hostedProject.ownerId,
+              );
+            }
+            setProjects((currentProjects) =>
+              currentProjects.filter(
+                (project) => project.id !== hostedProject.id,
+              ),
+            );
+            throw error;
+          }
+
+          return () => {
+            removeFloorPlanUploadSession(
+              hostedProject.id,
+              hostedProject.ownerId,
+            );
+            setProjects((currentProjects) =>
+              currentProjects.filter(
+                (project) => project.id !== hostedProject.id,
+              ),
+            );
+          };
+        },
+      });
+      signal.throwIfAborted();
+      if (!saved) {
         throw new Error("Roomie could not create this hosted project.");
       }
-
-      const upload = createFloorPlanUploadSession(saved, file);
-      setProjects((currentProjects) => [
-        saved,
-        ...currentProjects.filter((project) => project.id !== saved.id),
-      ]);
-      navigate(`/visualizer/${saved.id}`, {
-        state: createVisualizerNavigationState(upload),
-      });
     },
     [getAuthSnapshot, navigate],
   );

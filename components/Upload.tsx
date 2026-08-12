@@ -21,7 +21,11 @@ const COMPLETION_HOLD_MS = 450;
 type UploadPhase = "idle" | "reading" | "ready" | "hosting";
 
 export interface UploadProps {
-  onComplete?: (base64Data: string, file: File) => void | Promise<void>;
+  onComplete?: (
+    base64Data: string,
+    file: File,
+    signal: AbortSignal,
+  ) => void | Promise<void>;
 }
 
 const Upload = ({ onComplete }: UploadProps) => {
@@ -42,6 +46,7 @@ const Upload = ({ onComplete }: UploadProps) => {
   const operationIdRef = useRef(0);
   const processingRef = useRef(false);
   const activeOwnerUserIdRef = useRef<string | null>(null);
+  const hostingControllerRef = useRef<AbortController | null>(null);
   const signInInFlightRef = useRef(false);
   const helpId = useId();
   const errorId = useId();
@@ -59,6 +64,8 @@ const Upload = ({ onComplete }: UploadProps) => {
     operationIdRef.current += 1;
     processingRef.current = false;
     activeOwnerUserIdRef.current = null;
+    hostingControllerRef.current?.abort();
+    hostingControllerRef.current = null;
 
     if (completionTimerRef.current) {
       clearTimeout(completionTimerRef.current);
@@ -220,12 +227,28 @@ const Upload = ({ onComplete }: UploadProps) => {
               return;
             }
 
+            const hostingController = new AbortController();
+            hostingControllerRef.current = hostingController;
             setPhase("hosting");
 
             void Promise.resolve()
-              .then(() => onComplete(base64Data, nextFile))
+              .then(() =>
+                onComplete(
+                  base64Data,
+                  nextFile,
+                  hostingController.signal,
+                ),
+              )
+              .then(() => {
+                if (hostingControllerRef.current === hostingController) {
+                  hostingControllerRef.current = null;
+                }
+              })
               .catch(() => {
-                if (mountedRef.current) {
+                if (hostingControllerRef.current === hostingController) {
+                  hostingControllerRef.current = null;
+                }
+                if (mountedRef.current && !hostingController.signal.aborted) {
                   failUpload(
                     "Roomie could not host this floor plan. Check your Puter access and try again.",
                   );

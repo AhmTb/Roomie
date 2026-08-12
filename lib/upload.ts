@@ -314,6 +314,14 @@ export function getFloorPlanUploadSession(id: string, ownerUserId: string) {
   return uploadSessions.get(getUploadSessionKey(id, ownerUserId)) ?? null;
 }
 
+export function removeFloorPlanUploadSession(
+  id: string,
+  ownerUserId: string,
+) {
+  if (!id || !ownerUserId) return false;
+  return uploadSessions.delete(getUploadSessionKey(id, ownerUserId));
+}
+
 export function listFloorPlanProjectsForOwner(ownerUserId: string) {
   if (!ownerUserId) return [];
 
