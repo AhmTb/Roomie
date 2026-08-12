@@ -1,31 +1,18 @@
-export const ROOMIE_RENDER_PROMPT = `TASK: Convert the input 2D floor plan into a **photorealistic, top-down 3D architectural render**.
+export const ROOMIE_RENDER_PROMPT = `STRICT IMAGE-EDITING TASK — DO NOT REDESIGN.
 
-STRICT REQUIREMENTS (do not violate):
-1) **REMOVE ALL TEXT**: Do not render any letters, numbers, labels, dimensions, or annotations. Floors must be continuous where text used to be.
-2) **GEOMETRY MUST MATCH**: Walls, rooms, doors, and windows must follow the exact lines and positions in the plan. Do not shift or resize.
-3) **TOP-DOWN ONLY**: Orthographic top-down view. No perspective tilt.
-4) **CLEAN, REALISTIC OUTPUT**: Crisp edges, balanced lighting, and realistic materials. No sketch/hand-drawn look.
-5) **NO EXTRA CONTENT**: Do not add rooms, furniture, or objects that are not clearly indicated by the plan.
+Treat the uploaded floor plan as an immutable blueprint and convert only its visual style into a photorealistic architectural render. Preserve the source image's original orientation—portrait, landscape, or square—and its original canvas aspect ratio. Preserve the outer footprint, scale, proportions, wall thicknesses, and the exact coordinates of every exterior wall, interior partition, doorway, door swing, window, fixture, and furniture symbol. Never rotate, crop, stretch, reflow, simplify, mirror, or reinterpret the plan. No room or object may move, resize, merge, split, appear, or disappear. If realism conflicts with geometry, preserve geometry.
 
-STRUCTURE & DETAILS:
-- **Walls**: Extrude precisely from the plan lines. Consistent wall height and thickness.
-- **Doors**: Convert door swing arcs into open doors, aligned to the plan.
-- **Windows**: Convert thin perimeter lines into realistic glass windows.
+Before rendering, internally trace the complete building footprint, every wall centerline and boundary, every opening, and every fixture and furniture position. Use that trace as a locked spatial constraint. The final outer silhouette and every internal partition must align with the source plan without displacement.
 
-FURNITURE & ROOM MAPPING (only where icons/fixtures are clearly shown):
-- Bed icon → realistic bed with duvet and pillows.
-- Sofa icon → modern sectional or sofa.
-- Dining table icon → table with chairs.
-- Kitchen icon → counters with sink and stove.
-- Bathroom icon → toilet, sink, and tub/shower.
-- Office/study icon → desk, chair, and minimal shelving.
-- Porch/patio/balcony icon → outdoor seating or simple furniture (keep minimal).
-- Utility/laundry icon → washer/dryer and minimal cabinetry.
+Use room labels only as hidden semantic evidence before rendering: preserve the exact number, purpose, and boundary of every distinctly labeled space, including secondary kitchens, utility rooms, bathrooms, porches, patios, and balconies. Never convert one labeled room type into another. Then REMOVE ALL TEXT AND DRAFTING MARKS from the output. Erase every letter, number, room name, dimension, annotation, leader line, measurement line, and exterior dimension mark. Do not reproduce or invent any text. Do not mistake text, dimensions, or annotation strokes for walls. Replace removed interior text with uninterrupted matching floor material and keep the underlying room open and continuous.
 
-STYLE & LIGHTING:
-- Lighting: bright, neutral daylight. High clarity and balanced contrast.
-- Materials: realistic wood/tile floors, clean walls, subtle shadows.
-- Finish: professional architectural visualization; no text, no watermarks, no logos.`;
+Convert only symbols and fixtures that are visibly present in the source. Keep each item's exact count, footprint, position, and orientation. A bed symbol becomes one realistic bed; a sofa remains a sofa; a dining set keeps the same table and chair count; kitchen counters, sink, and stove remain in their drawn locations; bathroom fixtures remain separate and fixed; storage, office, laundry, porch, patio, or balcony items appear only when explicitly drawn. Do not add decoration, plants, rugs, shelves, seating, appliances, or any other object without a matching source symbol.
+
+Render a true 90-degree orthographic bird's-eye view: top-down only, no perspective tilt, no isometric angle, no dollhouse angle, and no roof. Extrude the traced walls uniformly with consistent low wall height and thickness. Convert door swing arcs into open doors at the original hinge, angle, and opening. Convert perimeter window marks into realistic glass windows at the exact original spans.
+
+Use bright neutral daylight, restrained realistic wood and tile materials, clean walls, crisp edges, balanced contrast, and subtle shadows. Keep materials subordinate to the plan geometry. Produce a clean professional architectural visualization with no text, watermark, logo, caption, border, or extra content.
+
+FINAL CHECK BEFORE OUTPUT: compare the render against the source as if overlaying both images. The canvas orientation, footprint, partitions, openings, fixtures, and furniture count must match. If anything does not align, correct it before returning the image.`;
 
 type GeneratedImage = { src?: string | null };
 
@@ -58,7 +45,6 @@ export type AIActionDependencies = {
           input_image: string;
           input_image_mime_type: string;
           quality: string;
-          ratio: { w: number; h: number };
         },
       ) => Promise<GeneratedImage>;
     };
@@ -179,6 +165,8 @@ export async function generate3DViewWithDependencies(
       // Puter does not currently expose an AbortSignal for txt2img. The
       // surrounding checks prevent stale results from being accepted, while
       // the account lock keeps the billed Puter identity stable during the call.
+      // Do not pass `ratio`: Gemini image editing defaults to the input image's
+      // dimensions, while an explicit ratio overrides the source canvas.
       const response = await dependencies.puterClient.ai.txt2img(
         ROOMIE_RENDER_PROMPT,
         {
@@ -187,7 +175,6 @@ export async function generate3DViewWithDependencies(
           input_image: preparedSource.dataUrl,
           input_image_mime_type: preparedSource.mimeType,
           quality: "1K",
-          ratio: { w: 16, h: 9 },
         },
       );
 

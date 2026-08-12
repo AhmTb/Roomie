@@ -118,8 +118,8 @@ test("generates with the pinned Puter image-to-image contract", async () => {
     input_image: SOURCE_DATA_URL,
     input_image_mime_type: "image/png",
     quality: "1K",
-    ratio: { w: 16, h: 9 },
   });
+  assert.equal(Object.hasOwn(aiCall.options, "ratio"), false);
   assert.deepEqual(
     harness.events.filter(
       (event) => event && typeof event === "object" && event.type === "fetch",
@@ -136,19 +136,28 @@ test("generates with the pinned Puter image-to-image contract", async () => {
   );
 });
 
-test("uses the strict orthographic floor-plan render prompt", async () => {
+test("uses a topology-locked orthographic image-editing prompt", async () => {
   const { ROOMIE_RENDER_PROMPT } = await loadGenerationModule();
 
-  assert.match(ROOMIE_RENDER_PROMPT, /REMOVE ALL TEXT/);
-  assert.match(ROOMIE_RENDER_PROMPT, /GEOMETRY MUST MATCH/);
-  assert.match(ROOMIE_RENDER_PROMPT, /Orthographic top-down view/);
-  assert.match(ROOMIE_RENDER_PROMPT, /NO EXTRA CONTENT/);
+  assert.match(ROOMIE_RENDER_PROMPT, /immutable blueprint/);
   assert.match(
     ROOMIE_RENDER_PROMPT,
-    /only where icons\/fixtures are clearly shown/,
+    /original orientation—portrait, landscape, or square/,
   );
-  assert.match(ROOMIE_RENDER_PROMPT, /no text, no watermarks, no logos/);
-  assert.doesNotMatch(ROOMIE_RENDER_PROMPT, /isometric/i);
+  assert.match(ROOMIE_RENDER_PROMPT, /original canvas aspect ratio/);
+  assert.match(ROOMIE_RENDER_PROMPT, /locked spatial constraint/);
+  assert.match(ROOMIE_RENDER_PROMPT, /hidden semantic evidence/);
+  assert.match(ROOMIE_RENDER_PROMPT, /Never convert one labeled room type/);
+  assert.match(ROOMIE_RENDER_PROMPT, /REMOVE ALL TEXT AND DRAFTING MARKS/);
+  assert.match(ROOMIE_RENDER_PROMPT, /true 90-degree orthographic/);
+  assert.match(
+    ROOMIE_RENDER_PROMPT,
+    /Keep each item's exact count, footprint, position, and orientation/,
+  );
+  assert.match(ROOMIE_RENDER_PROMPT, /as if overlaying both images/);
+  assert.match(ROOMIE_RENDER_PROMPT, /no isometric angle/);
+  assert.doesNotMatch(ROOMIE_RENDER_PROMPT, /modern sectional/i);
+  assert.doesNotMatch(ROOMIE_RENDER_PROMPT, /outdoor seating/i);
 });
 
 test("fails before invoking AI when the owner does not match", async () => {
