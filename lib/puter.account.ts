@@ -71,6 +71,9 @@ function readAccountVersion() {
       return version;
     }
     if (version !== localAccountVersion) {
+      // Record the observed version synchronously so repeated reads in this
+      // task do not enqueue duplicate listener notifications.
+      localAccountVersion = version;
       queueMicrotask(() =>
         acceptAccountMutation({ type: "finished", version }),
       );
@@ -273,7 +276,7 @@ export async function withPuterAccountLock<T>(
     }
   };
 
-  if (typeof navigator !== "undefined" && navigator.locks) {
+  if (hasSharedPuterAccountLock()) {
     const lockOptions = options.startIfAvailable
       ? ({ ifAvailable: true } as const)
       : undefined;

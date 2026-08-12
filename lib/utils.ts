@@ -64,6 +64,7 @@ function assertSafeHostedPathSegment(value: string) {
 
 function isLocalHttpUrl(url: URL) {
   return (
+    import.meta.env.DEV &&
     url.protocol === "http:" &&
     ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
   );

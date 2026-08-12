@@ -23,6 +23,19 @@ const hostingConfigRequests = new Map<
   Promise<HostingConfig | null>
 >();
 const HOSTING_CONFIG_LOCK_PREFIX = "roomie-hosting-config";
+const HOSTING_STAGING_DIRECTORY = "roomie-upload-staging";
+
+function createStagingFileName(extension: "jpg" | "png") {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("Secure random values are unavailable in this browser.");
+  }
+
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const token = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${token}.${extension}`;
+}
 
 function isHostingConfig(
   value: unknown,
@@ -56,6 +69,213 @@ async function assertCurrentOwner(ownerUserId: string) {
   if (currentOwnerUserId !== ownerUserId) {
     throw new Error("The signed-in Puter account changed during hosting setup.");
   }
+}
+
+async function getStrongFsItem(filePath: string, ownerUserId: string) {
+  await assertCurrentOwner(ownerUserId);
+
+  try {
+    const item = await puter.fs.stat(filePath, {
+      consistency: "strong",
+      returnSize: true,
+    });
+    await assertCurrentOwner(ownerUserId);
+    return item;
+  } catch {
+    // Do not turn an account transition into a missing-file result.
+    await assertCurrentOwner(ownerUserId);
+    return null;
+  }
+}
+
+async function getStrongFsItemByUid(uid: string, ownerUserId: string) {
+  await assertCurrentOwner(ownerUserId);
+
+  try {
+    const item = await puter.fs.stat({
+      uid,
+      consistency: "strong",
+      returnSize: true,
+    });
+    await assertCurrentOwner(ownerUserId);
+    return item;
+  } catch {
+    await assertCurrentOwner(ownerUserId);
+    return null;
+  }
+}
+
+function getAppRelativeFsPath(filePath: string) {
+  const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const appDataMatch = normalizedPath.match(
+    /(?:^|\/)AppData\/[^/]+\/(.+)$/,
+  );
+  return appDataMatch?.[1] ?? normalizedPath;
+}
+
+function fsItemHasPath(itemPath: string, expectedPath: string) {
+  return getAppRelativeFsPath(itemPath) === expectedPath;
+}
+
+async function recoverPublishedStagedItem(
+  filePath: string,
+  stagedUid: string,
+  ownerUserId: string,
+) {
+  // Prefer a path lookup because it also detects a collision at the intended
+  // destination. Fall back to the immutable UID when a committed move's
+  // response or the path lookup was lost to a transient network failure.
+  const itemAtFinalPath = await getStrongFsItem(filePath, ownerUserId);
+  if (
+    itemAtFinalPath?.uid === stagedUid &&
+    !itemAtFinalPath.isDir &&
+    fsItemHasPath(itemAtFinalPath.path, filePath)
+  ) {
+    return itemAtFinalPath;
+  }
+
+  const stagedItemByUid = await getStrongFsItemByUid(
+    stagedUid,
+    ownerUserId,
+  );
+  return stagedItemByUid?.uid === stagedUid &&
+    !stagedItemByUid.isDir &&
+    fsItemHasPath(stagedItemByUid.path, filePath)
+    ? stagedItemByUid
+    : null;
+}
+
+async function blobsHaveEqualBytes(left: Blob, right: Blob) {
+  if (left.size !== right.size) return false;
+
+  const [leftBytes, rightBytes] = await Promise.all([
+    left.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+    right.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+  ]);
+
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    if (leftBytes[index] !== rightBytes[index]) return false;
+  }
+
+  return true;
+}
+
+async function recoverMatchingStagedItem(
+  filePath: string,
+  expectedBlob: Blob,
+  ownerUserId: string,
+) {
+  const beforeRead = await getStrongFsItem(filePath, ownerUserId);
+  if (
+    !beforeRead?.uid ||
+    beforeRead.isDir ||
+    (beforeRead.size !== null && beforeRead.size !== expectedBlob.size)
+  ) {
+    return null;
+  }
+
+  let storedBlob: Blob;
+  try {
+    await assertCurrentOwner(ownerUserId);
+    storedBlob = await puter.fs.read(filePath);
+    await assertCurrentOwner(ownerUserId);
+  } catch {
+    await assertCurrentOwner(ownerUserId);
+    return null;
+  }
+
+  if (!(await blobsHaveEqualBytes(storedBlob, expectedBlob))) return null;
+
+  // Ensure the path was not replaced while its bytes were being checked.
+  const afterRead = await getStrongFsItem(filePath, ownerUserId);
+  return afterRead?.uid === beforeRead.uid && !afterRead.isDir
+    ? afterRead
+    : null;
+}
+
+async function quarantineConfirmedStagedItem(
+  filePath: string,
+  uid: string,
+  ownerUserId: string,
+) {
+  const item = await getStrongFsItemByUid(uid, ownerUserId);
+  if (!item) return false;
+  if (
+    item.uid !== uid ||
+    item.isDir ||
+    !fsItemHasPath(item.path, filePath)
+  ) {
+    return false;
+  }
+  // Puter 2.6.0 exposes UID-addressed rename but only path-addressed delete.
+  // Renaming by UID makes any uncertain object unreachable at its old path
+  // without risking deletion of a replacement that raced into that path.
+  const quarantinedName = `abandoned-${createStagingFileName(
+    filePath.endsWith(".png") ? "png" : "jpg",
+  )}`;
+  await puter.fs.rename({ uid, newName: quarantinedName });
+  return true;
+}
+
+type FailedPublicationReconciliation =
+  | "published"
+  | "quarantined"
+  | "unknown";
+
+async function reconcileFailedPublication(
+  stagingPath: string,
+  finalPath: string,
+  ownerUserId: string,
+  expectedUid: string | null,
+  expectedBlob: Blob,
+): Promise<FailedPublicationReconciliation> {
+  if (expectedUid) {
+    const candidate = await getStrongFsItemByUid(expectedUid, ownerUserId);
+    if (!candidate?.uid || candidate.isDir || candidate.uid !== expectedUid) {
+      return "unknown";
+    }
+
+    // A late UID lookup can be the first successful observation after an
+    // ambiguous move. Convert that confirmation into a tracked success.
+    if (fsItemHasPath(candidate.path, finalPath)) {
+      return "published";
+    }
+    if (!fsItemHasPath(candidate.path, stagingPath)) {
+      return "unknown";
+    }
+
+    return (await quarantineConfirmedStagedItem(
+      stagingPath,
+      candidate.uid,
+      ownerUserId,
+    ))
+      ? "quarantined"
+      : "unknown";
+  }
+
+  const candidate = await recoverMatchingStagedItem(
+    stagingPath,
+    expectedBlob,
+    ownerUserId,
+  );
+  if (!candidate?.uid || candidate.isDir) {
+    return "unknown";
+  }
+
+  await assertCurrentOwner(ownerUserId);
+  let wasQuarantined: boolean;
+  try {
+    wasQuarantined = await quarantineConfirmedStagedItem(
+      stagingPath,
+      candidate.uid,
+      ownerUserId,
+    );
+  } catch {
+    await assertCurrentOwner(ownerUserId);
+    return "unknown";
+  }
+  await assertCurrentOwner(ownerUserId);
+  return wasQuarantined ? "quarantined" : "unknown";
 }
 
 async function ensureHostingRootDirectory() {
@@ -144,8 +364,6 @@ async function createHostingConfig(ownerUserId: string) {
   try {
     await assertCurrentOwner(ownerUserId);
     await puter.kv.set(HOSTING_CONFIG_KEY, record);
-    await assertCurrentOwner(ownerUserId);
-    return record;
   } catch (error) {
     try {
       await puter.hosting.delete(created.subdomain);
@@ -157,6 +375,9 @@ async function createHostingConfig(ownerUserId: string) {
     }
     throw error;
   }
+
+  await assertCurrentOwner(ownerUserId);
+  return record;
 }
 
 async function resolveHostingConfig(ownerUserId: string) {
@@ -263,7 +484,12 @@ export async function uploadImageToHosting(
     const verified = await verifyImageBlob(resolvedBlob);
     const publicPath = `projects/${safeProjectId}/${safeLabel}.${verified.extension}`;
     const filePath = `${hosting.rootDirectory}/${publicPath}`;
+    const finalDirectory = `${hosting.rootDirectory}/projects/${safeProjectId}`;
+    const finalFileName = `${safeLabel}.${verified.extension}`;
     const hostedUrl = getHostedUrl(hosting.subdomain, publicPath);
+    const stagingPath = `${HOSTING_STAGING_DIRECTORY}/${createStagingFileName(
+      verified.extension,
+    )}`;
     if (!hostedUrl) {
       throw new Error("The hosted image URL could not be resolved.");
     }
@@ -272,14 +498,111 @@ export async function uploadImageToHosting(
     const writeHostedAsset = async () => {
       await assertCurrentOwner(hosting.ownerUserId);
       signal?.throwIfAborted();
-      await puter.fs.write(filePath, verified.blob, {
-        createMissingParents: true,
-        dedupeName: false,
-        // Project IDs are immutable. Refuse collisions so rollback can never
-        // delete or replace a previously committed public asset.
-        overwrite: false,
-      });
-      return { url: hostedUrl, filePath, wasWritten: true };
+      let stagedUid: string | null = null;
+      let stagingWriteAttempted = false;
+
+      try {
+        try {
+          stagingWriteAttempted = true;
+          const stagedItem = await puter.fs.write(
+            stagingPath,
+            verified.blob,
+            {
+              createMissingParents: true,
+              dedupeName: false,
+              overwrite: false,
+            },
+          );
+          if (!stagedItem.uid || stagedItem.isDir) {
+            throw new Error("The staged Roomie image is invalid.");
+          }
+          stagedUid = stagedItem.uid;
+
+          const confirmedStage = await getStrongFsItem(
+            stagingPath,
+            hosting.ownerUserId,
+          );
+          if (confirmedStage?.uid !== stagedUid || confirmedStage.isDir) {
+            throw new Error("The staged Roomie image could not be confirmed.");
+          }
+        } catch (writeError) {
+          // A request can reject after Puter persisted the file. Recover only
+          // when strong reads prove that this unguessable staging path holds
+          // the exact bytes we attempted to write.
+          const recoveredStage = await recoverMatchingStagedItem(
+            stagingPath,
+            verified.blob,
+            hosting.ownerUserId,
+          );
+          if (
+            !recoveredStage?.uid ||
+            (stagedUid && recoveredStage.uid !== stagedUid)
+          ) {
+            throw writeError;
+          }
+          stagedUid = recoveredStage.uid;
+        }
+
+        signal?.throwIfAborted();
+        try {
+          // Passing the parent and new name explicitly avoids Puter's
+          // destination-path heuristic and keeps collision handling atomic.
+          const movedItem = await puter.fs.move(
+            stagingPath,
+            finalDirectory,
+            {
+              createMissingParents: true,
+              newName: finalFileName,
+              overwrite: false,
+            },
+          );
+          if (
+            movedItem.uid !== stagedUid ||
+            movedItem.isDir ||
+            !fsItemHasPath(movedItem.path, filePath)
+          ) {
+            throw new Error("The published Roomie image is invalid.");
+          }
+        } catch (moveError) {
+          // If the move committed but its response was lost, the immutable UID
+          // proves that the final object is the staged object from this upload.
+          const recoveredFinal = await recoverPublishedStagedItem(
+            filePath,
+            stagedUid,
+            hosting.ownerUserId,
+          );
+          if (
+            !recoveredFinal?.uid ||
+            recoveredFinal.uid !== stagedUid ||
+            recoveredFinal.isDir
+          ) {
+            throw moveError;
+          }
+        }
+
+        return { url: hostedUrl, filePath, wasWritten: true };
+      } catch (publicationError) {
+        if (stagingWriteAttempted) {
+          try {
+            const reconciliation = await reconcileFailedPublication(
+              stagingPath,
+              filePath,
+              hosting.ownerUserId,
+              stagedUid,
+              verified.blob,
+            );
+            if (reconciliation === "published") {
+              return { url: hostedUrl, filePath, wasWritten: true };
+            }
+          } catch (cleanupError) {
+            console.warn(
+              "Failed to reconcile a staged Roomie image.",
+              cleanupError,
+            );
+          }
+        }
+        throw publicationError;
+      }
     };
 
     return hasPuterAccountLease(accountLease)
@@ -298,11 +621,21 @@ export async function deleteHostedImage(
   if (!asset.wasWritten || !asset.filePath) return true;
   if (!isHostingConfig(hosting, hosting.ownerUserId)) return false;
 
-  const expectedRoot = `${hosting.rootDirectory}/projects/`;
+  const pathSegments = asset.filePath.split("/");
+  const [rootDirectory, projectsDirectory, projectId, fileName] = pathSegments;
   if (
-    !asset.filePath.startsWith(expectedRoot) ||
-    !/\/(?:source|rendered)\.(?:jpg|png)$/.test(asset.filePath)
+    pathSegments.length !== 4 ||
+    pathSegments.some((segment) => segment === "." || segment === "..") ||
+    rootDirectory !== hosting.rootDirectory ||
+    projectsDirectory !== "projects" ||
+    !/^(?:source|rendered)\.(?:jpg|png)$/.test(fileName)
   ) {
+    return false;
+  }
+
+  try {
+    assertSafePathSegment(projectId, "Project ID");
+  } catch {
     return false;
   }
 

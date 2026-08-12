@@ -13,59 +13,17 @@ import {
   getOrCreateHostingConfig,
   uploadImageToHosting,
 } from "./puter.hosting";
+import { synchronizeStoredPuterAuth } from "./puter.auth-storage";
 import { assertSafePathSegment, getHostedUrl } from "./utils";
 
 const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
-const PUTER_AUTH_TOKEN_KEY = "puter.auth.token.v2";
-const PUTER_AUTH_TOKEN_ORIGIN_KEY = "puter.auth.token.origin.v2";
-
-function normalizeStoredValue(value: string | null) {
-  if (!value) return null;
-  const normalized = value.trim();
-  return normalized && normalized !== "null" && normalized !== "undefined"
-    ? normalized
-    : null;
-}
 
 export function synchronizePuterAuthTokenFromStorage() {
   if (typeof window === "undefined") return false;
 
-  try {
-    const storedToken = normalizeStoredValue(
-      localStorage.getItem(PUTER_AUTH_TOKEN_KEY),
-    );
-    const storedOrigin = normalizeStoredValue(
-      localStorage.getItem(PUTER_AUTH_TOKEN_ORIGIN_KEY),
-    );
-    const currentOrigin = new URL(puter.APIOrigin).origin;
-    const defaultOrigin = new URL(puter.defaultAPIOrigin).origin;
-    let isOriginAllowed = currentOrigin === defaultOrigin;
-    if (storedOrigin) {
-      try {
-        isOriginAllowed = new URL(storedOrigin).origin === currentOrigin;
-      } catch {
-        isOriginAllowed = false;
-      }
-    }
-
-    if (!storedToken || !isOriginAllowed) {
-      puter.resetAuthToken();
-      return false;
-    }
-
-    if (puter.authToken !== storedToken) {
-      puter.setAuthToken(storedToken);
-    }
-    return true;
-  } catch (error) {
-    try {
-      puter.resetAuthToken();
-    } catch {
-      // The SDK is already unusable; the auth refresh will fail closed.
-    }
-    console.warn("Failed to synchronize the Puter account token.", error);
-    return false;
-  }
+  return synchronizeStoredPuterAuth(localStorage, puter, (error) =>
+    console.warn("Failed to synchronize the Puter account token.", error),
+  );
 }
 
 async function mutatePuterAccount(operation: () => Promise<unknown>) {

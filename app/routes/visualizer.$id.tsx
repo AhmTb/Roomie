@@ -113,6 +113,7 @@ export default function Visualizer({ params }: Route.ComponentProps) {
                 target="_blank"
                 rel="noreferrer"
                 referrerPolicy="no-referrer"
+                aria-label="Open original floor plan in a new tab"
               >
                 <ExternalLink /> Open original
               </a>

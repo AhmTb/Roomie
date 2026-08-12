@@ -75,6 +75,20 @@ const projectDateFormatter = new Intl.DateTimeFormat("en", {
   timeZone: "UTC",
 });
 
+const getProjectNavigationState = (
+  projectId: string,
+  ownerUserId: string | null,
+) => {
+  if (!ownerUserId) return undefined;
+
+  try {
+    const session = getFloorPlanUploadSession(projectId, ownerUserId);
+    return session ? createVisualizerNavigationState(session) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export default function Home() {
   const navigate = useNavigate();
   const {
@@ -353,20 +367,17 @@ export default function Home() {
             <div className="projects-grid">
               {projects.length > 0 ? (
                 projects.map((project) => {
-                  const session = userId
-                    ? getFloorPlanUploadSession(project.id, userId)
-                    : null;
+                  const navigationState = getProjectNavigationState(
+                    project.id,
+                    userId,
+                  );
 
                   return (
                     <Link
                       className="project-card group"
                       key={project.id}
                       to={`/visualizer/${project.id}`}
-                      state={
-                        session
-                          ? createVisualizerNavigationState(session)
-                          : undefined
-                      }
+                      state={navigationState}
                       aria-label={`Open ${project.name}`}
                     >
                       <div className="preview">
@@ -406,9 +417,11 @@ export default function Home() {
                 })
               ) : (
                 <div className="empty">
-                  {isSignedIn
-                    ? "Upload a floor plan to create your first hosted project."
-                    : "Sign in with Puter to create and view hosted projects."}
+                  {!isAuthReady || isAuthTransitioning
+                    ? "Checking your Puter projects…"
+                    : isSignedIn
+                      ? "Upload a floor plan to create your first hosted project."
+                      : "Sign in with Puter to create and view hosted projects."}
                 </div>
               )}
             </div>

@@ -242,6 +242,13 @@ const Upload = ({ onComplete }: UploadProps) => {
               .then(() => {
                 if (hostingControllerRef.current === hostingController) {
                   hostingControllerRef.current = null;
+                  if (
+                    mountedRef.current &&
+                    operationId === operationIdRef.current &&
+                    !hostingController.signal.aborted
+                  ) {
+                    setPhase("ready");
+                  }
                 }
               })
               .catch(() => {
@@ -476,10 +483,14 @@ const Upload = ({ onComplete }: UploadProps) => {
             <div
               className="progress"
               role="progressbar"
-              aria-label="Floor plan read progress"
+              aria-label={
+                phase === "hosting"
+                  ? "Floor plan hosting progress"
+                  : "Floor plan read progress"
+              }
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={progress}
+              aria-valuenow={phase === "hosting" ? undefined : progress}
             >
               <div className="bar" style={{ width: `${progress}%` }} />
             </div>
