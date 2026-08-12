@@ -3,11 +3,18 @@ import { useOutletContext } from "react-router";
 import Button from "./UI/button";
 
 const Navbar = () => {
-  const { isAuthTransitioning, isSignedIn, userName, signOut, signIn } =
+  const {
+    isAuthReady,
+    isAuthTransitioning,
+    isSignedIn,
+    userName,
+    signOut,
+    signIn,
+  } =
     useOutletContext<AuthContext>();
 
   const handleAuthClick = async () => {
-    if (isAuthTransitioning) return;
+    if (!isAuthReady || isAuthTransitioning) return;
 
     try {
       if (isSignedIn) {
@@ -42,9 +49,13 @@ const Navbar = () => {
                 <Button
                   onClick={handleAuthClick}
                   className="btn"
-                  disabled={isAuthTransitioning}
+                  disabled={!isAuthReady || isAuthTransitioning}
                 >
-                  {isAuthTransitioning ? "Updating…" : "Sign Out"}
+                  {!isAuthReady
+                    ? "Checking…"
+                    : isAuthTransitioning
+                      ? "Updating…"
+                      : "Sign Out"}
                 </Button>
               </>
             ) : (
@@ -53,9 +64,13 @@ const Navbar = () => {
                   onClick={handleAuthClick}
                   size="sm"
                   variant="ghost"
-                  disabled={isAuthTransitioning}
+                  disabled={!isAuthReady || isAuthTransitioning}
                 >
-                  {isAuthTransitioning ? "Updating…" : "Login"}
+                  {!isAuthReady
+                    ? "Checking…"
+                    : isAuthTransitioning
+                      ? "Updating…"
+                      : "Login"}
                 </Button>
                 <a href="#upload" className="cta">Get Started</a>
 

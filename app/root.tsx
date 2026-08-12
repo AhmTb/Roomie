@@ -166,13 +166,16 @@ export default function App() {
       isAuthReady: true,
       isAuthTransitioning: true,
     });
-    if (previousUserId) {
-      clearFloorPlanUploadSessionsForOwner(previousUserId);
-    }
 
     try {
       await puterSignOut();
-      return await resolveAuth(operationId, true);
+      const isSignedIn = await resolveAuth(operationId, true);
+
+      if (!isSignedIn && previousUserId) {
+        clearFloorPlanUploadSessionsForOwner(previousUserId);
+      }
+
+      return isSignedIn;
     } catch (error) {
       await resolveAuth(operationId, true);
       throw error;
