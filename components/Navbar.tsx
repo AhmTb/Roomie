@@ -44,7 +44,7 @@ const Navbar = () => {
             ) : (
               <>
                 <Button onClick={handleAuthClick} size="sm" variant="ghost">Login</Button>
-                <a href="#workspace" className="cta">Get Started</a>
+                <a href="#upload" className="cta">Get Started</a>
 
               </>
             )}

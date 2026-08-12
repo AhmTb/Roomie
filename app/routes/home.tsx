@@ -11,8 +11,12 @@ import {
   Upload,
   Zap,
 } from "lucide-react";
+import { useCallback } from "react";
+import { useNavigate } from "react-router";
 
 import Navbar from "../../components/Navbar";
+import FloorPlanUpload from "../../components/Upload";
+import { createFloorPlanUploadSession } from "../../lib/upload";
 import type { Route } from "./+types/home";
 
 export function meta({}: Route.MetaArgs) {
@@ -55,6 +59,16 @@ const deliverables = [
 ];
 
 export default function Home() {
+  const navigate = useNavigate();
+
+  const handleUploadComplete = useCallback(
+    (base64Data: string, file: File) => {
+      const upload = createFloorPlanUploadSession(base64Data, file);
+      navigate(`/visualizer/${upload.id}`);
+    },
+    [navigate],
+  );
+
   return (
     <div className="home">
       <Navbar />
@@ -79,12 +93,26 @@ export default function Home() {
           </p>
 
           <div className="actions">
-            <a className="cta" href="#workspace">
+            <a className="cta" href="#upload">
               Start a project <ArrowRight className="icon" />
             </a>
             <a className="demo" href="#workflow">
               <Play className="icon" fill="currentColor" /> Watch the workflow
             </a>
+          </div>
+
+          <div className="upload-shell" id="upload">
+            <div className="grid-overlay" aria-hidden="true" />
+            <div className="upload-card">
+              <div className="upload-head">
+                <div className="upload-icon" aria-hidden="true">
+                  <Layers className="icon" />
+                </div>
+                <h2>Upload your floor plan</h2>
+                <p>Supports JPG or PNG images up to 10 MB</p>
+              </div>
+              <FloorPlanUpload onComplete={handleUploadComplete} />
+            </div>
           </div>
 
           <div className="studio-preview" id="workspace">
@@ -299,7 +327,7 @@ export default function Home() {
             Bring the brief. Roomie will help your team see it, shape it, and
             ship it.
           </p>
-          <a href="#workspace">
+          <a href="#upload">
             Open your first workspace <ArrowRight />
           </a>
         </section>

@@ -48,6 +48,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 const DEFAULT_AUTH_STATE = {
+  isAuthReady: false,
   isSignedIn: false,
   userName: null,
   userId: null,
@@ -61,11 +62,12 @@ export default function App() {
       const user = await getCurrentUser();
 
       if (!user) {
-        setAuthState(DEFAULT_AUTH_STATE);
+        setAuthState({ ...DEFAULT_AUTH_STATE, isAuthReady: true });
         return false;
       }
 
       setAuthState({
+        isAuthReady: true,
         isSignedIn: !!user,
         userName: user?.username || null,
         userId: user?.uuid || null,
@@ -73,7 +75,7 @@ export default function App() {
       return !!user;
     } catch (error) {
       console.error("Error refreshing auth state:", error);
-      setAuthState(DEFAULT_AUTH_STATE);
+      setAuthState({ ...DEFAULT_AUTH_STATE, isAuthReady: true });
       return false;
     }
   };
@@ -91,11 +93,11 @@ export default function App() {
     return refreshAuth();
   };
 
-  return (<main className="min-h-screen bg-background text-foreground relative z-10">
+  return (<div className="min-h-screen bg-background text-foreground relative z-10">
     <Outlet 
     context={{...authState, refreshAuth, signIn, signOut}}
     />
-  </main>
+  </div>
    );
 }
 
