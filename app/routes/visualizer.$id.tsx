@@ -2,15 +2,16 @@ import {
   ArrowLeft,
   Box,
   CheckCircle2,
-  Download,
+  ExternalLink,
   ImageIcon,
 } from "lucide-react";
-import { Link, useOutletContext } from "react-router";
+import { Link, useLocation, useOutletContext } from "react-router";
 
 import Button from "../../components/UI/button";
 import {
   formatFileSize,
   getFloorPlanUploadSession,
+  getVisualizerNavigationState,
 } from "../../lib/upload";
 import type { Route } from "./+types/visualizer.$id";
 
@@ -25,13 +26,18 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Visualizer({ params }: Route.ComponentProps) {
+  const location = useLocation();
   const { isAuthReady, isAuthTransitioning, isSignedIn, userId } =
     useOutletContext<AuthContext>();
   const storedUpload =
     isAuthReady && !isAuthTransitioning && isSignedIn && userId
       ? getFloorPlanUploadSession(params.id, userId)
       : null;
-  const upload = storedUpload;
+  const navigationUpload =
+    isAuthReady && !isAuthTransitioning && isSignedIn && userId
+      ? getVisualizerNavigationState(location.state, params.id, userId)
+      : null;
+  const upload = storedUpload ?? navigationUpload;
 
   if (!upload) {
     const emptyState = !isAuthReady || isAuthTransitioning
@@ -44,7 +50,7 @@ export default function Visualizer({ params }: Route.ComponentProps) {
         ? {
             eyebrow: "Sign-in required",
             title: "Sign in to view this floor plan.",
-            copy: "This local preview is available only while the same Roomie account remains signed in on this page.",
+            copy: "This owner-bound browser handoff is available only while the same Roomie account remains signed in.",
           }
         : {
             eyebrow: "No active upload",
@@ -93,19 +99,23 @@ export default function Visualizer({ params }: Route.ComponentProps) {
           <div className="panel-header">
             <div className="panel-meta">
               <p>Source floor plan</p>
-              <h1 id="workspace-title">{upload.fileName}</h1>
+              <h1 id="workspace-title">{upload.project.name}</h1>
               <span className="note">
-                {formatFileSize(upload.fileSize)} · {upload.mimeType}
+                {upload.fileName} · {formatFileSize(upload.fileSize)} ·{" "}
+                {upload.mimeType}
               </span>
             </div>
 
             <div className="panel-actions">
               <a
                 className="btn btn--outline btn--sm"
-                href={upload.dataUrl}
-                download={upload.fileName}
+                href={upload.project.sourceImage}
+                target="_blank"
+                rel="noreferrer"
+                referrerPolicy="no-referrer"
+                aria-label="Open original floor plan in a new tab"
               >
-                <Download /> Download original
+                <ExternalLink /> Open original
               </a>
               <Button className="export" size="sm" disabled>
                 Rendering comes next
@@ -116,11 +126,12 @@ export default function Visualizer({ params }: Route.ComponentProps) {
           <div className="render-area source-preview">
             <img
               className="render-img"
-              src={upload.dataUrl}
+              src={upload.project.sourceImage}
               alt={`Uploaded floor plan: ${upload.fileName}`}
+              referrerPolicy="no-referrer"
             />
             <span className="source-badge">
-              <CheckCircle2 /> Read locally and ready
+              <CheckCircle2 /> Hosted on Puter and ready
             </span>
           </div>
         </section>
@@ -128,10 +139,11 @@ export default function Visualizer({ params }: Route.ComponentProps) {
         <aside className="workspace-note" aria-label="Upload status">
           <CheckCircle2 aria-hidden="true" />
           <div>
-            <strong>Upload mechanism complete</strong>
+            <strong>Hosted project created</strong>
             <p>
-              The image has been validated and read in this browser. Permanent
-              cloud hosting and AI rendering are separate workflow steps.
+              This browser session is owner-bound, but the source image is
+              available to anyone with its public Puter URL. AI rendering comes
+              next.
             </p>
           </div>
         </aside>

@@ -13,7 +13,12 @@ import {
   getCurrentUser,
   signIn as puterSignIn,
   signOut as puterSignOut,
+  synchronizePuterAuthTokenFromStorage,
 } from "../lib/puter.action";
+import {
+  subscribeToPuterAccountMutations,
+  withPuterAccountIntentLock,
+} from "../lib/puter.account";
 import { clearFloorPlanUploadSessionsForOwner } from "../lib/upload";
 import "./app.css";
 
@@ -61,6 +66,8 @@ export default function App() {
   const authStateRef = useRef<AuthState>(DEFAULT_AUTH_STATE);
   const authOperationRef = useRef(0);
   const authMutationInFlightRef = useRef(false);
+  const externalPreviousUserIdRef = useRef<string | null>(null);
+  const externalAuthSyncRef = useRef(Promise.resolve());
 
   const commitAuthState = useCallback((nextState: AuthState) => {
     authStateRef.current = nextState;
@@ -129,6 +136,58 @@ export default function App() {
     void refreshAuth();
   }, [refreshAuth]);
 
+  useEffect(
+    () =>
+      subscribeToPuterAccountMutations(() => {
+        authOperationRef.current += 1;
+        if (authStateRef.current.userId) {
+          externalPreviousUserIdRef.current = authStateRef.current.userId;
+        }
+        commitAuthState({
+          ...DEFAULT_AUTH_STATE,
+          isAuthReady: true,
+          isAuthTransitioning: true,
+        });
+
+        externalAuthSyncRef.current = externalAuthSyncRef.current
+          .catch(() => undefined)
+          .then(async () => {
+            const operationId = ++authOperationRef.current;
+            try {
+              await withPuterAccountIntentLock(() =>
+                {
+                  synchronizePuterAuthTokenFromStorage();
+                  return resolveAuth(operationId, true);
+                },
+              );
+
+              const nextUserId = authStateRef.current.userId;
+              const previousUserId = externalPreviousUserIdRef.current;
+              if (previousUserId && previousUserId !== nextUserId) {
+                clearFloorPlanUploadSessionsForOwner(previousUserId);
+              }
+              externalPreviousUserIdRef.current = nextUserId;
+
+              if (operationId === authOperationRef.current) {
+                commitAuthState({
+                  ...authStateRef.current,
+                  isAuthTransitioning: false,
+                });
+              }
+            } catch (error) {
+              console.error("Error synchronizing Puter account state:", error);
+              if (operationId === authOperationRef.current) {
+                commitAuthState({
+                  ...DEFAULT_AUTH_STATE,
+                  isAuthReady: true,
+                });
+              }
+            }
+          });
+      }),
+    [commitAuthState, resolveAuth],
+  );
+
   const signIn = useCallback(async () => {
     if (authMutationInFlightRef.current) return false;
 
@@ -147,10 +206,12 @@ export default function App() {
       throw error;
     } finally {
       authMutationInFlightRef.current = false;
-      commitAuthState({
-        ...authStateRef.current,
-        isAuthTransitioning: false,
-      });
+      if (operationId === authOperationRef.current) {
+        commitAuthState({
+          ...authStateRef.current,
+          isAuthTransitioning: false,
+        });
+      }
     }
   }, [commitAuthState, resolveAuth]);
 
@@ -181,10 +242,12 @@ export default function App() {
       throw error;
     } finally {
       authMutationInFlightRef.current = false;
-      commitAuthState({
-        ...authStateRef.current,
-        isAuthTransitioning: false,
-      });
+      if (operationId === authOperationRef.current) {
+        commitAuthState({
+          ...authStateRef.current,
+          isAuthTransitioning: false,
+        });
+      }
     }
   }, [commitAuthState, resolveAuth]);
 
