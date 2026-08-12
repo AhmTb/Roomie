@@ -1,6 +1,6 @@
 import puter from "@heyputer/puter.js";
 
-import { withPuterAccountLock } from "./puter.action";
+import { withPuterAccountLock } from "./puter.account";
 import {
   HOSTING_CONFIG_KEY,
   HOSTING_ROOT_DIRECTORY,
@@ -210,7 +210,7 @@ export async function uploadImageToHosting({
     if (!isHostingConfig(hosting, hosting.ownerUserId)) {
       throw new Error("The Roomie hosting configuration is invalid.");
     }
-    if (label !== "original" && label !== "rendered") {
+    if (label !== "source" && label !== "rendered") {
       throw new Error("The hosted image label is invalid.");
     }
 
@@ -219,7 +219,18 @@ export async function uploadImageToHosting({
     if (isHostedUrl(url, hosting.subdomain)) {
       return withPuterAccountLock(async () => {
         await assertCurrentOwner(hosting.ownerUserId);
-        return { url: new URL(url).toString() };
+        const parsedUrl = new URL(url);
+        const expectedPath = new RegExp(
+          `^/projects/${encodeURIComponent(safeProjectId)}/${safeLabel}\\.(?:jpg|png)$`,
+        );
+        if (
+          !expectedPath.test(parsedUrl.pathname) ||
+          parsedUrl.search ||
+          parsedUrl.hash
+        ) {
+          throw new Error("The hosted image does not match this project asset.");
+        }
+        return { url: parsedUrl.toString() };
       });
     }
 

@@ -11,12 +11,18 @@ import {
   Upload,
   Zap,
 } from "lucide-react";
-import { useCallback } from "react";
-import { useNavigate, useOutletContext } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useOutletContext } from "react-router";
 
 import Navbar from "../../components/Navbar";
 import FloorPlanUpload from "../../components/Upload";
-import { createFloorPlanUploadSession } from "../../lib/upload";
+import { createProject } from "../../lib/puter.action";
+import {
+  createFloorPlanUploadSession,
+  createVisualizerNavigationState,
+  getFloorPlanUploadSession,
+  listFloorPlanProjectsForOwner,
+} from "../../lib/upload";
 import type { Route } from "./+types/home";
 
 export function meta({}: Route.MetaArgs) {
@@ -58,12 +64,40 @@ const deliverables = [
   "Design decision logs",
 ];
 
+const projectDateFormatter = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 export default function Home() {
   const navigate = useNavigate();
-  const { getAuthSnapshot } = useOutletContext<AuthContext>();
+  const {
+    getAuthSnapshot,
+    isAuthReady,
+    isAuthTransitioning,
+    isSignedIn,
+    userId,
+  } = useOutletContext<AuthContext>();
+  const [projects, setProjects] = useState<DesignItem[]>([]);
+
+  useEffect(() => {
+    if (
+      !isAuthReady ||
+      isAuthTransitioning ||
+      !isSignedIn ||
+      !userId
+    ) {
+      setProjects([]);
+      return;
+    }
+
+    setProjects(listFloorPlanProjectsForOwner(userId));
+  }, [isAuthReady, isAuthTransitioning, isSignedIn, userId]);
 
   const handleUploadComplete = useCallback(
-    (base64Data: string, file: File) => {
+    async (base64Data: string, file: File) => {
       const currentAuth = getAuthSnapshot();
 
       if (
@@ -74,12 +108,46 @@ export default function Home() {
         throw new Error("Sign in before creating an upload session.");
       }
 
-      const upload = createFloorPlanUploadSession(
-        base64Data,
-        file,
-        currentAuth.userId,
-      );
-      navigate(`/visualizer/${upload.id}`);
+      const projectId = globalThis.crypto?.randomUUID?.();
+      if (!projectId) {
+        throw new Error("Secure project IDs are unavailable in this browser.");
+      }
+
+      const saved = await createProject({
+        item: {
+          id: projectId,
+          name: `Residence ${projectId.slice(0, 8).toUpperCase()}`,
+          sourceImage: base64Data,
+          renderedImage: undefined,
+          timestamp: Date.now(),
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+        },
+        // Project discovery remains owner-bound even though Puter hosting URLs
+        // are public to anyone who has the link.
+        visibility: "private",
+      });
+      const currentAuthAfterSave = getAuthSnapshot();
+
+      if (
+        !saved ||
+        currentAuthAfterSave.isAuthTransitioning ||
+        !currentAuthAfterSave.isSignedIn ||
+        !currentAuthAfterSave.userId ||
+        currentAuthAfterSave.userId !== saved.ownerId
+      ) {
+        throw new Error("Roomie could not create this hosted project.");
+      }
+
+      const upload = createFloorPlanUploadSession(saved, file);
+      setProjects((currentProjects) => [
+        saved,
+        ...currentProjects.filter((project) => project.id !== saved.id),
+      ]);
+      navigate(`/visualizer/${saved.id}`, {
+        state: createVisualizerNavigationState(upload),
+      });
     },
     [getAuthSnapshot, navigate],
   );
@@ -219,6 +287,84 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="projects" id="projects" aria-labelledby="projects-title">
+          <div className="section-inner">
+            <div className="section-head">
+              <div className="copy">
+                <p className="eyebrow">Your Roomie projects</p>
+                <h2 id="projects-title">Latest hosted floor plans.</h2>
+                <p>
+                  Projects created in this browser session appear here with
+                  their lightweight Puter-hosted image URLs.
+                </p>
+              </div>
+            </div>
+
+            <div className="projects-grid">
+              {projects.length > 0 ? (
+                projects.map((project) => {
+                  const session = userId
+                    ? getFloorPlanUploadSession(project.id, userId)
+                    : null;
+
+                  return (
+                    <Link
+                      className="project-card group"
+                      key={project.id}
+                      to={`/visualizer/${project.id}`}
+                      state={
+                        session
+                          ? createVisualizerNavigationState(session)
+                          : undefined
+                      }
+                      aria-label={`Open ${project.name}`}
+                    >
+                      <div className="preview">
+                        <img
+                          src={project.renderedImage ?? project.sourceImage}
+                          alt={`Floor plan for ${project.name}`}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="badge">
+                          <span>
+                            {project.renderedImage
+                              ? "Rendered study"
+                              : "Source hosted"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="card-body">
+                        <div>
+                          <h3>{project.name}</h3>
+                          <div className="meta">
+                            <span>
+                              {projectDateFormatter.format(
+                                new Date(project.timestamp),
+                              )}
+                            </span>
+                            <span>Puter hosted</span>
+                          </div>
+                        </div>
+                        <span className="arrow" aria-hidden="true">
+                          <ArrowRight />
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="empty">
+                  {isSignedIn
+                    ? "Upload a floor plan to create your first hosted project."
+                    : "Sign in with Puter to create and view hosted projects."}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section className="workflow" id="workflow">
           <div className="section-inner">
             <div className="section-intro">
@@ -248,7 +394,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="delivery" id="projects">
+        <section className="delivery" id="delivery">
           <div className="section-inner delivery-grid">
             <div className="delivery-copy">
               <p className="eyebrow">Built for real project work</p>

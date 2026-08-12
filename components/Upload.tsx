@@ -18,7 +18,7 @@ import {
 
 const COMPLETION_HOLD_MS = 450;
 
-type UploadPhase = "idle" | "reading" | "ready" | "opening";
+type UploadPhase = "idle" | "reading" | "ready" | "hosting";
 
 export interface UploadProps {
   onComplete?: (base64Data: string, file: File) => void | Promise<void>;
@@ -220,14 +220,14 @@ const Upload = ({ onComplete }: UploadProps) => {
               return;
             }
 
-            setPhase("opening");
+            setPhase("hosting");
 
             void Promise.resolve()
               .then(() => onComplete(base64Data, nextFile))
               .catch(() => {
                 if (mountedRef.current) {
                   failUpload(
-                    "The floor plan is ready, but the workspace could not open. Try again.",
+                    "Roomie could not host this floor plan. Check your Puter access and try again.",
                   );
                 }
               });
@@ -368,7 +368,7 @@ const Upload = ({ onComplete }: UploadProps) => {
     idle: "Waiting for a floor plan",
     reading: "Reading floor plan locally…",
     ready: "Floor plan ready",
-    opening: "Opening workspace…",
+    hosting: "Publishing to your Puter site…",
   }[phase];
 
   return (
@@ -428,12 +428,16 @@ const Upload = ({ onComplete }: UploadProps) => {
                   : "Sign in with Puter to upload"}
             </p>
             <p className="help" id={helpId}>
-              JPG or PNG · Maximum file size 10 MB
+              JPG or PNG · 10 MB max · Creates a public Puter image URL
             </p>
           </div>
         </div>
       ) : (
-        <div className="upload-status" aria-live="polite" aria-busy={phase === "reading"}>
+        <div
+          className="upload-status"
+          aria-live="polite"
+          aria-busy={phase === "reading" || phase === "hosting"}
+        >
           <div className="status-content">
             <div className="status-icon" aria-hidden="true">
               {progress === 100 ? (
@@ -458,7 +462,7 @@ const Upload = ({ onComplete }: UploadProps) => {
             </div>
             <p className="status-text" role="status">{phaseLabel}</p>
 
-            {phase !== "opening" && (
+            {phase !== "hosting" && (
               <button className="upload-reset" type="button" onClick={resetSelection}>
                 Choose another file
               </button>
