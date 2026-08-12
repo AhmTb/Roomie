@@ -90,6 +90,12 @@ const Upload = ({ onComplete }: UploadProps) => {
     if (inputRef.current) inputRef.current.value = "";
   }, [stopActiveProcess]);
 
+  useEffect(() => {
+    if (isAuthReady && !isSignedIn && phase !== "idle") {
+      resetSelection();
+    }
+  }, [isAuthReady, isSignedIn, phase, resetSelection]);
+
   const failUpload = useCallback(
     (message: string) => {
       stopActiveProcess();

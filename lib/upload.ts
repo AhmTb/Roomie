@@ -12,6 +12,7 @@ const MAX_FLOOR_PLAN_PIXEL_COUNT = 40_000_000;
 
 export interface FloorPlanUploadSession {
   id: string;
+  ownerUserId: string;
   dataUrl: string;
   fileName: string;
   fileSize: number;
@@ -126,13 +127,19 @@ export function formatFileSize(bytes: number) {
 export function createFloorPlanUploadSession(
   dataUrl: string,
   file: FloorPlanFileMetadata,
+  ownerUserId: string,
 ) {
+  if (!ownerUserId) {
+    throw new Error("A signed-in user is required to create an upload session.");
+  }
+
   const id =
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
   const session: FloorPlanUploadSession = {
     id,
+    ownerUserId,
     dataUrl,
     fileName: file.name,
     fileSize: file.size,

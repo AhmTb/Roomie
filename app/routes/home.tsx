@@ -12,7 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useOutletContext } from "react-router";
 
 import Navbar from "../../components/Navbar";
 import FloorPlanUpload from "../../components/Upload";
@@ -60,13 +60,18 @@ const deliverables = [
 
 export default function Home() {
   const navigate = useNavigate();
+  const { isSignedIn, userId } = useOutletContext<AuthContext>();
 
   const handleUploadComplete = useCallback(
     (base64Data: string, file: File) => {
-      const upload = createFloorPlanUploadSession(base64Data, file);
+      if (!isSignedIn || !userId) {
+        throw new Error("Sign in before creating an upload session.");
+      }
+
+      const upload = createFloorPlanUploadSession(base64Data, file, userId);
       navigate(`/visualizer/${upload.id}`);
     },
-    [navigate],
+    [isSignedIn, navigate, userId],
   );
 
   return (

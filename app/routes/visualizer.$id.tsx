@@ -5,7 +5,7 @@ import {
   Download,
   ImageIcon,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useOutletContext } from "react-router";
 
 import Button from "../../components/UI/button";
 import {
@@ -25,9 +25,34 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Visualizer({ params }: Route.ComponentProps) {
-  const upload = getFloorPlanUploadSession(params.id);
+  const { isAuthReady, isSignedIn, userId } =
+    useOutletContext<AuthContext>();
+  const storedUpload =
+    isAuthReady && isSignedIn && userId
+      ? getFloorPlanUploadSession(params.id)
+      : null;
+  const upload =
+    storedUpload?.ownerUserId === userId ? storedUpload : null;
 
   if (!upload) {
+    const emptyState = !isAuthReady
+      ? {
+          eyebrow: "Checking access",
+          title: "Preparing your workspace.",
+          copy: "Roomie is confirming your sign-in before opening this floor plan.",
+        }
+      : !isSignedIn || !userId
+        ? {
+            eyebrow: "Sign-in required",
+            title: "Sign in to view this floor plan.",
+            copy: "Floor-plan previews are private to the Roomie account that uploaded them.",
+          }
+        : {
+            eyebrow: "No active upload",
+            title: "Choose a floor plan to begin.",
+            copy: "This upload is unavailable for the current account or browser session. Upload the plan again to continue.",
+          };
+
     return (
       <main className="visualizer visualizer-empty">
         <Link className="brand" to="/" aria-label="Roomie home">
@@ -39,15 +64,14 @@ export default function Visualizer({ params }: Route.ComponentProps) {
           <div className="empty-icon" aria-hidden="true">
             <ImageIcon />
           </div>
-          <p className="eyebrow">No active upload</p>
-          <h1 id="missing-upload-title">Choose a floor plan to begin.</h1>
-          <p>
-            Local upload previews last for the current page. Upload the plan
-            again if you refreshed or opened this link in a new tab.
-          </p>
-          <Link className="btn btn--primary btn--md" to="/#upload">
-            <ArrowLeft /> Back to upload
-          </Link>
+          <p className="eyebrow">{emptyState.eyebrow}</p>
+          <h1 id="missing-upload-title">{emptyState.title}</h1>
+          <p>{emptyState.copy}</p>
+          {isAuthReady ? (
+            <Link className="btn btn--primary btn--md" to="/#upload">
+              <ArrowLeft /> Back to upload
+            </Link>
+          ) : null}
         </section>
       </main>
     );

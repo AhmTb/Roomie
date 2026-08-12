@@ -431,10 +431,12 @@
 
             .source-preview {
                 @apply flex items-center justify-center p-4 md:p-8;
+
                 min-height: min(70vh, 760px);
 
                 .render-img {
                     @apply rounded-lg;
+
                     max-height: calc(70vh - 4rem);
                 }
 
@@ -561,6 +563,7 @@
 
             .upload-shell {
                 @apply w-full max-w-5xl mx-auto mb-16 relative rounded-3xl overflow-hidden bg-linear-to-b from-blue-100/50 to-white/50 border border-blue-100 p-6 md:p-12 shadow-sm min-h-100 flex items-center justify-center;
+
                 scroll-margin-top: 6rem;
 
                 .grid-overlay {
