@@ -359,6 +359,33 @@ test("does not invoke AI when an automatic lease cannot commit", async () => {
   );
 });
 
+test("does not invoke AI when cancellation follows an automatic lease commit", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const controller = new AbortController();
+  const harness = createHarness();
+
+  await assert.rejects(
+    generate3DViewWithDependencies(
+      createRequest(controller.signal),
+      preparedSource,
+      harness.dependencies,
+      {
+        async beforeProviderRequest() {
+          controller.abort();
+          return true;
+        },
+      },
+    ),
+    { name: "AbortError" },
+  );
+  assert.equal(
+    harness.events.some(
+      (event) => event && typeof event === "object" && event.type === "ai:txt2img",
+    ),
+    false,
+  );
+});
+
 test("preserves AbortError when cancellation occurs during normalization", async () => {
   const { generate3DViewWithDependencies } = await loadGenerationModule();
   const controller = new AbortController();

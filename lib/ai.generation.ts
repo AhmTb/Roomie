@@ -141,6 +141,7 @@ export async function generate3DViewWithDependencies(
 
       if (options.beforeProviderRequest) {
         const mayStart = await options.beforeProviderRequest(signal);
+        signal?.throwIfAborted();
         if (!mayStart) {
           throw new Error(
             "The automatic AI generation reservation is no longer valid.",

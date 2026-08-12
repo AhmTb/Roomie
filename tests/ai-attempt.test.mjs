@@ -239,6 +239,12 @@ test("corruption repair preserves other valid started attempts", async () => {
     ),
     null,
   );
+  const repaired = JSON.parse(dependencies.getStored());
+  const preserved = repaired.find(
+    (attempt) => attempt.projectId === protectedRequest.projectId,
+  );
+  assert.equal(preserved.claimId, "protected-claim");
+  assert.equal(preserved.updatedAt, 1_700_000_000_000);
 });
 
 test("fails closed when attempt storage is unavailable", async () => {
