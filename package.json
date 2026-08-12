@@ -2,12 +2,15 @@
   "name": "roomie",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "test": "npm run test:compat",
-    "test:compat": "node --test tests/*.test.mjs",
+    "test:compat": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
