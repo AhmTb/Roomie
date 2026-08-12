@@ -88,6 +88,18 @@ interface HostedProjectAuthorization {
   accountVersion: string;
 }
 
+interface Generate3DViewParams {
+  sourceImage: string;
+  expectedOwnerUserId: string;
+  authorization: HostedProjectAuthorization;
+  signal?: AbortSignal;
+}
+
+interface Generated3DView {
+  renderedImage: string;
+  renderedPath: undefined;
+}
+
 interface VisualizerNavigationState {
   version: 1;
   project: DesignItem;

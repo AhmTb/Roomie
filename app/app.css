@@ -288,20 +288,20 @@
     }
 
     .visualizer {
-        @apply min-h-screen bg-background pt-6 pb-10 px-4 md:px-6 flex flex-col items-center font-sans relative;
+        @apply min-h-screen w-full min-w-0 overflow-x-hidden bg-background pt-6 pb-10 px-4 md:px-6 flex flex-col items-center font-sans relative;
 
         .topbar {
-            @apply w-full max-w-6xl flex items-center justify-between mb-6 px-2;
+            @apply w-full min-w-0 max-w-6xl flex items-center justify-between gap-3 mb-6 px-2;
 
             .brand {
-                @apply flex items-center space-x-2 cursor-pointer;
+                @apply flex min-w-0 items-center space-x-2 cursor-pointer;
 
                 .logo {
                     @apply w-6 h-6 text-black;
                 }
 
                 .name {
-                    @apply text-xl font-serif font-bold text-black tracking-tight;
+                    @apply truncate text-xl font-serif font-bold text-black tracking-tight;
                 }
             }
 
@@ -312,19 +312,44 @@
                     @apply w-5 h-5 mr-2;
                 }
             }
+
+            .brand,
+            .exit {
+                &:focus-visible {
+                    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+                }
+            }
         }
 
         .content {
-            @apply w-full max-w-6xl grid grid-cols-1 gap-6;
+            @apply w-full min-w-0 max-w-6xl grid grid-cols-1 gap-6;
         }
 
         .panel {
-            @apply bg-white rounded-xl border border-zinc-200 shadow-2xl overflow-hidden;
+            @apply min-w-0 bg-white rounded-xl border border-zinc-200 shadow-2xl overflow-hidden;
 
             .panel-header {
                 @apply flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-5 border-b border-zinc-100;
 
+                .panel-project {
+                    @apply flex min-w-0 items-center gap-3;
+                }
+
+                .panel-project-name {
+                    @apply truncate text-2xl font-serif font-bold leading-tight text-black;
+                }
+
+                .panel-project-meta {
+                    @apply mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500;
+
+                    > * {
+                        @apply min-w-0;
+                    }
+                }
+
                 .panel-meta {
+                    @apply min-w-0;
+
                     p {
                         @apply text-xs font-mono uppercase tracking-widest text-zinc-400;
                     }
@@ -347,7 +372,7 @@
                 }
 
                 .panel-actions {
-                    @apply flex flex-wrap items-center gap-3;
+                    @apply flex w-full min-w-0 flex-wrap items-center gap-3 md:w-auto md:justify-end;
 
                     .export {
                         @apply bg-primary text-white hover:bg-orange-600 h-9 border-none shadow-sm;
@@ -360,14 +385,33 @@
                     svg {
                         @apply h-3.5 w-3.5;
                     }
+
+                    > a,
+                    > button {
+                        @apply max-w-full;
+
+                        &:focus-visible {
+                            @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white;
+                        }
+                    }
+
+                    .render-download {
+                        @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-medium text-white shadow-sm transition-colors hover:bg-orange-600;
+                    }
+
+                    .is-disabled {
+                        @apply cursor-not-allowed opacity-50 pointer-events-none;
+                    }
                 }
             }
 
             .render-area {
-                @apply relative bg-zinc-100 min-h-105;
+                @apply relative min-w-0 overflow-hidden bg-zinc-100;
+
+                aspect-ratio: 16 / 9;
 
                 .render-img {
-                    @apply w-full h-full object-contain transition-all duration-700 opacity-100 scale-100;
+                    @apply absolute inset-0 w-full h-full object-contain transition-all duration-700 opacity-100 scale-100;
                 }
 
                 &.is-processing {
@@ -377,18 +421,18 @@
                 }
 
                 .render-placeholder {
-                    @apply w-full h-full flex items-center justify-center;
+                    @apply absolute inset-0 w-full h-full flex items-center justify-center;
                 }
 
                 .render-fallback {
-                    @apply w-full h-full object-contain opacity-50;
+                    @apply absolute inset-0 w-full h-full object-contain opacity-50;
                 }
 
                 .render-overlay {
-                    @apply absolute inset-0 flex flex-col items-center justify-center z-30 bg-white/60 backdrop-blur-sm transition-opacity duration-300;
+                    @apply absolute inset-0 flex flex-col items-center justify-center z-30 bg-white/60 p-4 backdrop-blur-sm transition-opacity duration-300;
 
                     .rendering-card {
-                        @apply bg-white px-6 py-4 rounded-xl border border-zinc-200 flex flex-col items-center shadow-2xl;
+                        @apply w-full max-w-sm bg-white px-6 py-5 rounded-xl border border-zinc-200 flex flex-col items-center text-center shadow-2xl;
 
                         .spinner {
                             @apply w-8 h-8 mb-3 animate-spin text-primary;
@@ -402,7 +446,45 @@
                             @apply text-xs text-zinc-500 mt-1;
                         }
                     }
+
+                    .generation-error {
+                        @apply flex w-full max-w-md flex-col items-center rounded-xl border border-red-200 bg-white px-5 py-5 text-center shadow-2xl;
+
+                        .title {
+                            @apply text-sm font-bold text-red-800;
+                        }
+
+                        .subtitle {
+                            @apply mt-1 max-w-sm text-xs leading-5 text-red-700;
+                        }
+                    }
+
+                    .generation-ready {
+                        @apply border-zinc-200;
+
+                        .title {
+                            @apply text-zinc-900;
+                        }
+
+                        .subtitle {
+                            @apply text-zinc-600;
+                        }
+                    }
+
+                    .generation-retry {
+                        @apply mt-4 inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-zinc-800;
+
+                        &:focus-visible {
+                            @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white;
+                        }
+                    }
                 }
+            }
+
+            .render-caption {
+                @apply border-t border-zinc-100 bg-white px-5 py-3 text-xs leading-5 text-zinc-500;
+
+                overflow-wrap: anywhere;
             }
 
             &.compare {
@@ -433,9 +515,10 @@
                 @apply flex items-center justify-center p-4 md:p-8;
 
                 min-height: min(70vh, 760px);
+                aspect-ratio: auto;
 
                 .render-img {
-                    @apply rounded-lg;
+                    @apply relative inset-auto rounded-lg;
 
                     max-height: calc(70vh - 4rem);
                 }
@@ -447,6 +530,81 @@
                         @apply h-3.5 w-3.5;
                     }
                 }
+            }
+        }
+
+        @media (max-width: 640px) {
+            @apply pt-4 pb-6 px-3;
+
+            .topbar {
+                @apply mb-4 px-0;
+
+                .brand .name {
+                    @apply text-lg;
+                }
+
+                .exit {
+                    @apply shrink-0;
+                }
+            }
+
+            .panel .panel-header {
+                @apply p-4;
+
+                .panel-project-name,
+                .panel-meta h1,
+                .panel-meta h2 {
+                    @apply text-xl;
+                }
+
+                .panel-actions {
+                    @apply flex-col items-stretch;
+
+                    > a,
+                    > button,
+                    .render-download {
+                        @apply w-full;
+                    }
+                }
+            }
+
+            .panel .render-area {
+                aspect-ratio: 4 / 3;
+
+                .render-overlay {
+                    @apply p-3;
+
+                    .rendering-card,
+                    .generation-error {
+                        @apply px-4 py-4;
+                    }
+                }
+            }
+
+            .panel .render-caption {
+                @apply px-4;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .panel .render-area {
+                .render-img,
+                .render-overlay,
+                .generation-retry {
+                    transition-duration: 0.01ms !important;
+                }
+
+                &.is-processing .render-img {
+                    @apply blur-none scale-100;
+                }
+
+                .spinner {
+                    animation: none !important;
+                }
+            }
+
+            .panel .panel-actions .render-download {
+                transition-duration: 0.01ms !important;
             }
         }
 
