@@ -6,6 +6,11 @@ import {
 } from "./puter.account";
 import type { PuterAccountLease } from "./puter.account";
 import {
+  ensurePuterFsDirectory,
+  isPuterFsDirectory,
+  isPuterFsFile,
+} from "./puter.fs-item";
+import {
   HOSTING_CONFIG_KEY,
   HOSTING_ROOT_DIRECTORY,
   assertSafePathSegment,
@@ -128,7 +133,7 @@ async function recoverPublishedStagedItem(
   const itemAtFinalPath = await getStrongFsItem(filePath, ownerUserId);
   if (
     itemAtFinalPath?.uid === stagedUid &&
-    !itemAtFinalPath.isDir &&
+    isPuterFsFile(itemAtFinalPath) &&
     fsItemHasPath(itemAtFinalPath.path, filePath)
   ) {
     return itemAtFinalPath;
@@ -139,7 +144,7 @@ async function recoverPublishedStagedItem(
     ownerUserId,
   );
   return stagedItemByUid?.uid === stagedUid &&
-    !stagedItemByUid.isDir &&
+    isPuterFsFile(stagedItemByUid) &&
     fsItemHasPath(stagedItemByUid.path, filePath)
     ? stagedItemByUid
     : null;
@@ -168,7 +173,7 @@ async function recoverMatchingStagedItem(
   const beforeRead = await getStrongFsItem(filePath, ownerUserId);
   if (
     !beforeRead?.uid ||
-    beforeRead.isDir ||
+    !isPuterFsFile(beforeRead) ||
     (beforeRead.size !== null && beforeRead.size !== expectedBlob.size)
   ) {
     return null;
@@ -188,7 +193,7 @@ async function recoverMatchingStagedItem(
 
   // Ensure the path was not replaced while its bytes were being checked.
   const afterRead = await getStrongFsItem(filePath, ownerUserId);
-  return afterRead?.uid === beforeRead.uid && !afterRead.isDir
+  return afterRead?.uid === beforeRead.uid && isPuterFsFile(afterRead)
     ? afterRead
     : null;
 }
@@ -202,7 +207,7 @@ async function quarantineConfirmedStagedItem(
   if (!item) return false;
   if (
     item.uid !== uid ||
-    item.isDir ||
+    !isPuterFsFile(item) ||
     !fsItemHasPath(item.path, filePath)
   ) {
     return false;
@@ -231,7 +236,11 @@ async function reconcileFailedPublication(
 ): Promise<FailedPublicationReconciliation> {
   if (expectedUid) {
     const candidate = await getStrongFsItemByUid(expectedUid, ownerUserId);
-    if (!candidate?.uid || candidate.isDir || candidate.uid !== expectedUid) {
+    if (
+      !candidate?.uid ||
+      !isPuterFsFile(candidate) ||
+      candidate.uid !== expectedUid
+    ) {
       return "unknown";
     }
 
@@ -258,7 +267,7 @@ async function reconcileFailedPublication(
     expectedBlob,
     ownerUserId,
   );
-  if (!candidate?.uid || candidate.isDir) {
+  if (!candidate?.uid || !isPuterFsFile(candidate)) {
     return "unknown";
   }
 
@@ -285,7 +294,7 @@ async function ensureHostingRootDirectory() {
   );
 
   if (existing) {
-    if (!existing.isDir) {
+    if (!isPuterFsDirectory(existing)) {
       throw new Error("The Roomie hosting path is not a directory.");
     }
     return existing;
@@ -297,9 +306,24 @@ async function ensureHostingRootDirectory() {
     });
   } catch (initialError) {
     const racedDirectory = await puter.fs.stat(HOSTING_ROOT_DIRECTORY);
-    if (!racedDirectory.isDir) throw initialError;
+    if (!isPuterFsDirectory(racedDirectory)) throw initialError;
     return racedDirectory;
   }
+}
+
+async function ensureHostedAssetDirectory(
+  directoryPath: string,
+  ownerUserId: string,
+) {
+  return ensurePuterFsDirectory(directoryPath, {
+    create: async (path, options) => {
+      await assertCurrentOwner(ownerUserId);
+      const directory = await puter.fs.mkdir(path, options);
+      await assertCurrentOwner(ownerUserId);
+      return directory;
+    },
+    read: (path) => getStrongFsItem(path, ownerUserId),
+  });
 }
 
 async function readExistingHostingConfig(ownerUserId: string) {
@@ -513,7 +537,7 @@ export async function uploadImageToHosting(
               overwrite: false,
             },
           );
-          if (!stagedItem.uid || stagedItem.isDir) {
+          if (!stagedItem.uid || !isPuterFsFile(stagedItem)) {
             throw new Error("The staged Roomie image is invalid.");
           }
           stagedUid = stagedItem.uid;
@@ -522,7 +546,10 @@ export async function uploadImageToHosting(
             stagingPath,
             hosting.ownerUserId,
           );
-          if (confirmedStage?.uid !== stagedUid || confirmedStage.isDir) {
+          if (
+            confirmedStage?.uid !== stagedUid ||
+            !isPuterFsFile(confirmedStage)
+          ) {
             throw new Error("The staged Roomie image could not be confirmed.");
           }
         } catch (writeError) {
@@ -544,6 +571,14 @@ export async function uploadImageToHosting(
         }
 
         signal?.throwIfAborted();
+        // Puter's live move endpoint requires its destination directory to
+        // exist even when createMissingParents is requested. Create it first;
+        // the recovery read also makes concurrent directory creation safe.
+        await ensureHostedAssetDirectory(
+          finalDirectory,
+          hosting.ownerUserId,
+        );
+        signal?.throwIfAborted();
         try {
           // Passing the parent and new name explicitly avoids Puter's
           // destination-path heuristic and keeps collision handling atomic.
@@ -558,7 +593,7 @@ export async function uploadImageToHosting(
           );
           if (
             movedItem.uid !== stagedUid ||
-            movedItem.isDir ||
+            !isPuterFsFile(movedItem) ||
             !fsItemHasPath(movedItem.path, filePath)
           ) {
             throw new Error("The published Roomie image is invalid.");
@@ -574,7 +609,7 @@ export async function uploadImageToHosting(
           if (
             !recoveredFinal?.uid ||
             recoveredFinal.uid !== stagedUid ||
-            recoveredFinal.isDir
+            !isPuterFsFile(recoveredFinal)
           ) {
             throw moveError;
           }
