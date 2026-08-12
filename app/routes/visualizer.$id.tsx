@@ -16,7 +16,12 @@ import { Link, useLocation, useOutletContext } from "react-router";
 import Button from "../../components/UI/button";
 import { generate3DView } from "../../lib/ai.action";
 import { GeneratedImageNormalizationError } from "../../lib/ai.generation";
-import { claimAutomaticGenerationAttempt } from "../../lib/ai.attempt";
+import {
+  claimAutomaticGenerationAttempt,
+  commitAutomaticGenerationAttempt,
+  releaseAutomaticGenerationAttempt,
+  type AutomaticGenerationLease,
+} from "../../lib/ai.attempt";
 import { getHostedProjectAuthorization } from "../../lib/puter.action";
 import {
   formatFileSize,
@@ -113,8 +118,11 @@ function VisualizerWorkspace({ upload }: { upload: FloorPlanUploadSession }) {
   const hasStartedInitialGeneration = useRef(false);
   const isProcessing = status === "processing";
 
-  const runGeneration = useCallback(async () => {
+  const runGeneration = useCallback(async (
+    automaticLease?: AutomaticGenerationLease,
+  ) => {
     const requestId = ++generationId.current;
+    let automaticAttemptStarted = false;
     activeGeneration.current?.abort();
     const controller = new AbortController();
     activeGeneration.current = controller;
@@ -129,12 +137,26 @@ function VisualizerWorkspace({ upload }: { upload: FloorPlanUploadSession }) {
         );
       }
 
-      const result = await generate3DView({
-        sourceImage: upload.project.sourceImage,
-        expectedOwnerUserId: upload.ownerUserId,
-        authorization,
-        signal: controller.signal,
-      });
+      const result = await generate3DView(
+        {
+          sourceImage: upload.project.sourceImage,
+          expectedOwnerUserId: upload.ownerUserId,
+          authorization,
+          signal: controller.signal,
+        },
+        automaticLease
+          ? {
+              beforeProviderRequest: async (signal) => {
+                const started = await commitAutomaticGenerationAttempt(
+                  automaticLease,
+                  signal,
+                );
+                automaticAttemptStarted = started;
+                return started;
+              },
+            }
+          : undefined,
+      );
 
       if (controller.signal.aborted || requestId !== generationId.current) {
         return;
@@ -152,6 +174,9 @@ function VisualizerWorkspace({ upload }: { upload: FloorPlanUploadSession }) {
       setError(getGenerationMessage(generationError));
       setStatus("error");
     } finally {
+      if (automaticLease && !automaticAttemptStarted) {
+        await releaseAutomaticGenerationAttempt(automaticLease);
+      }
       if (requestId === generationId.current) {
         activeGeneration.current = null;
       }
@@ -167,15 +192,18 @@ function VisualizerWorkspace({ upload }: { upload: FloorPlanUploadSession }) {
     const timer = window.setTimeout(async () => {
       if (hasStartedInitialGeneration.current) return;
       hasStartedInitialGeneration.current = true;
-      const shouldGenerate = await claimAutomaticGenerationAttempt({
+      const lease = await claimAutomaticGenerationAttempt({
         ownerUserId: upload.ownerUserId,
         projectId: upload.project.id,
         sourceImage: upload.project.sourceImage,
       });
-      if (disposed) return;
+      if (disposed) {
+        if (lease) await releaseAutomaticGenerationAttempt(lease);
+        return;
+      }
 
-      if (shouldGenerate) {
-        void runGeneration();
+      if (lease) {
+        void runGeneration(lease);
       } else {
         setStatus("idle");
       }

@@ -95,8 +95,13 @@ interface Generate3DViewParams {
   signal?: AbortSignal;
 }
 
+interface Generate3DViewOptions {
+  beforeProviderRequest?: (signal?: AbortSignal) => Promise<boolean>;
+}
+
 interface Generated3DView {
   renderedImage: string;
+  // Generated renders are transient and must not acquire a Puter storage path.
   renderedPath: undefined;
 }
 

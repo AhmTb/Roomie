@@ -1,6 +1,8 @@
 import puter from "@heyputer/puter.js";
 
 import {
+  assertReliableAccountCoordination,
+  assertValidGenerationRequest,
   generate3DViewWithDependencies,
   ROOMIE_RENDER_PROMPT,
 } from "./ai.generation";
@@ -76,7 +78,10 @@ export async function fetchAsDataUrl(url: string, signal?: AbortSignal) {
 
 export async function generate3DView(
   params: Generate3DViewParams,
+  options?: Generate3DViewOptions,
 ): Promise<Generated3DView> {
+  assertValidGenerationRequest(params);
+  assertReliableAccountCoordination(hasReliablePuterAccountCoordination());
   const preparedSource = await fetchAsDataUrl(params.sourceImage, params.signal);
   return generate3DViewWithDependencies(params, preparedSource, {
     puterClient: puter,
@@ -87,5 +92,5 @@ export async function generate3DView(
     withAccountIntentLock: withPuterAccountIntentLock,
     withAccountLock: (operation) =>
       withPuterAccountLock(() => operation()),
-  });
+  }, options);
 }

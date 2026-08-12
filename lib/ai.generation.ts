@@ -50,7 +50,7 @@ export type AIActionDependencies = {
   ) => Promise<T | null>;
 };
 
-function assertValidGenerationRequest({
+export function assertValidGenerationRequest({
   sourceImage,
   expectedOwnerUserId,
   authorization,
@@ -66,6 +66,14 @@ function assertValidGenerationRequest({
     !authorization.accountVersion
   ) {
     throw new Error("The AI generation request is invalid.");
+  }
+}
+
+export function assertReliableAccountCoordination(isReliable: boolean) {
+  if (!isReliable) {
+    throw new Error(
+      "This browser cannot safely coordinate AI generation across tabs.",
+    );
   }
 }
 
@@ -91,13 +99,21 @@ export async function generate3DViewWithDependencies(
   params: Generate3DViewParams,
   preparedSource: PreparedSourceImage,
   dependencies: AIActionDependencies,
+  options: Generate3DViewOptions = {},
 ): Promise<Generated3DView> {
   assertValidGenerationRequest(params);
+  assertReliableAccountCoordination(
+    dependencies.hasReliableAccountCoordination(),
+  );
 
-  if (!dependencies.hasReliableAccountCoordination()) {
-    throw new Error(
-      "This browser cannot safely coordinate AI generation across tabs.",
-    );
+  if (
+    !preparedSource ||
+    typeof preparedSource.dataUrl !== "string" ||
+    !/^data:image\/(?:jpeg|png);base64,/i.test(preparedSource.dataUrl) ||
+    (preparedSource.mimeType !== "image/jpeg" &&
+      preparedSource.mimeType !== "image/png")
+  ) {
+    throw new Error("The source image payload is invalid.");
   }
 
   const {
@@ -115,16 +131,6 @@ export async function generate3DViewWithDependencies(
         dependencies,
       );
 
-      if (
-        !preparedSource ||
-        typeof preparedSource.dataUrl !== "string" ||
-        !/^data:image\/(?:jpeg|png);base64,/i.test(preparedSource.dataUrl) ||
-        (preparedSource.mimeType !== "image/jpeg" &&
-          preparedSource.mimeType !== "image/png")
-      ) {
-        throw new Error("The source image payload is invalid.");
-      }
-
       signal?.throwIfAborted();
       await assertAuthorizedOwner(
         expectedOwnerUserId,
@@ -132,6 +138,15 @@ export async function generate3DViewWithDependencies(
         dependencies,
       );
       signal?.throwIfAborted();
+
+      if (options.beforeProviderRequest) {
+        const mayStart = await options.beforeProviderRequest(signal);
+        if (!mayStart) {
+          throw new Error(
+            "The automatic AI generation reservation is no longer valid.",
+          );
+        }
+      }
 
       // Puter does not currently expose an AbortSignal for txt2img. The
       // surrounding checks prevent stale results from being accepted, while

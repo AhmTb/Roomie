@@ -30,7 +30,8 @@ function createHarness(overrides = {}) {
 
   const dependencies = {
     puterClient,
-    async normalizeGeneratedImage(url) {
+    async normalizeGeneratedImage(url, signal) {
+      signal?.throwIfAborted();
       events.push({ type: "fetch", url });
       return url;
     },
@@ -274,6 +275,108 @@ test("fails closed when cross-tab account coordination is unavailable", async ()
     /cannot safely coordinate AI generation/i,
   );
   assert.deepEqual(harness.events, []);
+});
+
+test("rejects an invalid prepared source before invoking AI", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const harness = createHarness();
+
+  await assert.rejects(
+    generate3DViewWithDependencies(
+      createRequest(),
+      { dataUrl: "data:text/plain;base64,bm90LWltYWdl", mimeType: "image/png" },
+      harness.dependencies,
+    ),
+    /source image payload is invalid/i,
+  );
+  assert.deepEqual(harness.events, []);
+});
+
+test("fails when the account lock cannot be acquired", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const harness = createHarness({
+    async withAccountLock() {
+      return null;
+    },
+  });
+
+  await assert.rejects(
+    generate3DViewWithDependencies(
+      createRequest(),
+      preparedSource,
+      harness.dependencies,
+    ),
+    /could not acquire the Puter account lock/i,
+  );
+  assert.equal(
+    harness.events.some(
+      (event) => event && typeof event === "object" && event.type === "ai:txt2img",
+    ),
+    false,
+  );
+});
+
+test("requires an automatic lease commit immediately before invoking AI", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const harness = createHarness();
+
+  await generate3DViewWithDependencies(
+    createRequest(),
+    preparedSource,
+    harness.dependencies,
+    {
+      async beforeProviderRequest() {
+        harness.events.push("attempt:started");
+        return true;
+      },
+    },
+  );
+
+  const providerIndex = harness.events.findIndex(
+    (event) => event && typeof event === "object" && event.type === "ai:txt2img",
+  );
+  assert.equal(harness.events[providerIndex - 1], "attempt:started");
+});
+
+test("does not invoke AI when an automatic lease cannot commit", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const harness = createHarness();
+
+  await assert.rejects(
+    generate3DViewWithDependencies(
+      createRequest(),
+      preparedSource,
+      harness.dependencies,
+      { beforeProviderRequest: async () => false },
+    ),
+    /reservation is no longer valid/i,
+  );
+  assert.equal(
+    harness.events.some(
+      (event) => event && typeof event === "object" && event.type === "ai:txt2img",
+    ),
+    false,
+  );
+});
+
+test("preserves AbortError when cancellation occurs during normalization", async () => {
+  const { generate3DViewWithDependencies } = await loadGenerationModule();
+  const controller = new AbortController();
+  const harness = createHarness({
+    async normalizeGeneratedImage(_url, signal) {
+      controller.abort();
+      signal.throwIfAborted();
+    },
+  });
+
+  await assert.rejects(
+    generate3DViewWithDependencies(
+      createRequest(controller.signal),
+      preparedSource,
+      harness.dependencies,
+    ),
+    { name: "AbortError" },
+  );
 });
 
 test("distinguishes output normalization failure after an AI response", async () => {
