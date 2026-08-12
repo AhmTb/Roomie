@@ -1,8 +1,35 @@
 import puter from "@heyputer/puter.js";
 
-export const signIn = async () => await puter.auth.signIn();
+const PUTER_ACCOUNT_LOCK_NAME = "roomie-puter-account";
+let puterAccountOperation = Promise.resolve();
 
-export const signOut = async () => await puter.auth.signOut();
+export async function withPuterAccountLock<T>(
+  operation: () => T | Promise<T>,
+) {
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks.request(PUTER_ACCOUNT_LOCK_NAME, operation);
+  }
+
+  const previousOperation = puterAccountOperation;
+  let releaseOperation = () => {};
+  puterAccountOperation = new Promise<void>((resolve) => {
+    releaseOperation = resolve;
+  });
+
+  await previousOperation;
+
+  try {
+    return await operation();
+  } finally {
+    releaseOperation();
+  }
+}
+
+export const signIn = async () =>
+  withPuterAccountLock(() => puter.auth.signIn());
+
+export const signOut = async () =>
+  withPuterAccountLock(() => puter.auth.signOut());
 
 export const getCurrentUser = async () => {
   try {
