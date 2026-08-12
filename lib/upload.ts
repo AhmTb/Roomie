@@ -159,6 +159,17 @@ export function createFloorPlanUploadSession(
   return session;
 }
 
-export function getFloorPlanUploadSession(id: string) {
-  return uploadSessions.get(id) ?? null;
+export function getFloorPlanUploadSession(id: string, ownerUserId: string) {
+  const session = uploadSessions.get(id);
+
+  if (!ownerUserId || session?.ownerUserId !== ownerUserId) return null;
+  return session;
+}
+
+export function clearFloorPlanUploadSessionsForOwner(ownerUserId: string) {
+  if (!ownerUserId) return;
+
+  for (const [id, session] of uploadSessions) {
+    if (session.ownerUserId === ownerUserId) uploadSessions.delete(id);
+  }
 }

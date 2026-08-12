@@ -41,15 +41,24 @@ const Upload = ({ onComplete }: UploadProps) => {
   const mountedRef = useRef(true);
   const operationIdRef = useRef(0);
   const processingRef = useRef(false);
+  const activeOwnerUserIdRef = useRef<string | null>(null);
   const signInInFlightRef = useRef(false);
   const helpId = useId();
   const errorId = useId();
 
-  const { isAuthReady, isSignedIn, signIn } = useOutletContext<AuthContext>();
+  const {
+    getAuthSnapshot,
+    isAuthReady,
+    isAuthTransitioning,
+    isSignedIn,
+    signIn,
+    userId,
+  } = useOutletContext<AuthContext>();
 
   const stopActiveProcess = useCallback(() => {
     operationIdRef.current += 1;
     processingRef.current = false;
+    activeOwnerUserIdRef.current = null;
 
     if (completionTimerRef.current) {
       clearTimeout(completionTimerRef.current);
@@ -91,10 +100,16 @@ const Upload = ({ onComplete }: UploadProps) => {
   }, [stopActiveProcess]);
 
   useEffect(() => {
-    if (isAuthReady && !isSignedIn && phase !== "idle") {
+    if (
+      isAuthReady &&
+      phase !== "idle" &&
+      (!isSignedIn ||
+        !userId ||
+        activeOwnerUserIdRef.current !== userId)
+    ) {
       resetSelection();
     }
-  }, [isAuthReady, isSignedIn, phase, resetSelection]);
+  }, [isAuthReady, isSignedIn, phase, resetSelection, userId]);
 
   const failUpload = useCallback(
     (message: string) => {
@@ -111,7 +126,9 @@ const Upload = ({ onComplete }: UploadProps) => {
     (nextFile: File) => {
       if (
         !isAuthReady ||
+        isAuthTransitioning ||
         !isSignedIn ||
+        !userId ||
         phase !== "idle" ||
         processingRef.current
       ) {
@@ -126,7 +143,9 @@ const Upload = ({ onComplete }: UploadProps) => {
 
       stopActiveProcess();
       const operationId = operationIdRef.current;
+      const operationOwnerUserId = userId;
       processingRef.current = true;
+      activeOwnerUserIdRef.current = operationOwnerUserId;
       setFile(nextFile);
       setError(null);
       setProgress(1);
@@ -187,6 +206,20 @@ const Upload = ({ onComplete }: UploadProps) => {
 
           completionTimerRef.current = setTimeout(() => {
             completionTimerRef.current = null;
+            const currentAuth = getAuthSnapshot();
+
+            if (
+              !currentAuth.isAuthReady ||
+              currentAuth.isAuthTransitioning ||
+              !currentAuth.isSignedIn ||
+              currentAuth.userId !== operationOwnerUserId
+            ) {
+              failUpload(
+                "Your account changed before the upload finished. Sign in and try again.",
+              );
+              return;
+            }
+
             setPhase("opening");
 
             void Promise.resolve()
@@ -206,16 +239,25 @@ const Upload = ({ onComplete }: UploadProps) => {
     },
     [
       failUpload,
+      getAuthSnapshot,
       isAuthReady,
+      isAuthTransitioning,
       isSignedIn,
       onComplete,
       phase,
       stopActiveProcess,
+      userId,
     ],
   );
 
   const requestSignIn = useCallback(async () => {
-    if (!isAuthReady || signInInFlightRef.current) return;
+    if (
+      !isAuthReady ||
+      isAuthTransitioning ||
+      signInInFlightRef.current
+    ) {
+      return;
+    }
 
     signInInFlightRef.current = true;
     setIsSigningIn(true);
@@ -234,10 +276,10 @@ const Upload = ({ onComplete }: UploadProps) => {
       signInInFlightRef.current = false;
       if (mountedRef.current) setIsSigningIn(false);
     }
-  }, [isAuthReady, signIn]);
+  }, [isAuthReady, isAuthTransitioning, signIn]);
 
   const activateDropzone = useCallback(() => {
-    if (!isAuthReady || phase !== "idle") return;
+    if (!isAuthReady || isAuthTransitioning || phase !== "idle") return;
 
     if (!isSignedIn) {
       void requestSignIn();
@@ -245,7 +287,7 @@ const Upload = ({ onComplete }: UploadProps) => {
     }
 
     inputRef.current?.click();
-  }, [isAuthReady, isSignedIn, phase, requestSignIn]);
+  }, [isAuthReady, isAuthTransitioning, isSignedIn, phase, requestSignIn]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -258,13 +300,25 @@ const Upload = ({ onComplete }: UploadProps) => {
     event.preventDefault();
     dragDepthRef.current += 1;
 
-    if (isAuthReady && isSignedIn && phase === "idle") setIsDragging(true);
+    if (
+      isAuthReady &&
+      !isAuthTransitioning &&
+      isSignedIn &&
+      phase === "idle"
+    ) {
+      setIsDragging(true);
+    }
   };
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.dataTransfer.dropEffect =
-      isAuthReady && isSignedIn && phase === "idle" ? "copy" : "none";
+      isAuthReady &&
+      !isAuthTransitioning &&
+      isSignedIn &&
+      phase === "idle"
+        ? "copy"
+        : "none";
   };
 
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
@@ -281,6 +335,11 @@ const Upload = ({ onComplete }: UploadProps) => {
 
     if (!isAuthReady) {
       setError("Roomie is still checking your sign-in. Try again in a moment.");
+      return;
+    }
+
+    if (isAuthTransitioning) {
+      setError("Roomie is updating your sign-in. Try again in a moment.");
       return;
     }
 
@@ -317,13 +376,17 @@ const Upload = ({ onComplete }: UploadProps) => {
       {phase === "idle" ? (
         <div
           className={`dropzone ${isDragging ? "is-dragging" : ""} ${
-            !isAuthReady || !isSignedIn ? "is-disabled" : ""
+            !isAuthReady || isAuthTransitioning || !isSignedIn
+              ? "is-disabled"
+              : ""
           }`}
           role="button"
           tabIndex={0}
           aria-label={
             !isAuthReady
               ? "Checking Puter sign-in"
+              : isAuthTransitioning
+                ? "Updating Puter sign-in"
               : isSignedIn
               ? "Choose a JPG or PNG floor plan"
               : "Sign in with Puter to upload a floor plan"
@@ -345,7 +408,7 @@ const Upload = ({ onComplete }: UploadProps) => {
             accept={FLOOR_PLAN_ACCEPT_ATTRIBUTE}
             aria-label="Floor plan image"
             tabIndex={-1}
-            disabled={!isSignedIn}
+            disabled={isAuthTransitioning || !isSignedIn}
             onChange={handleChange}
           />
 
@@ -356,6 +419,8 @@ const Upload = ({ onComplete }: UploadProps) => {
             <p>
               {!isAuthReady
                 ? "Checking sign-in…"
+                : isAuthTransitioning
+                  ? "Updating sign-in…"
                 : isSignedIn
                 ? "Click to upload or drag and drop"
                 : isSigningIn

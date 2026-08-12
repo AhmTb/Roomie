@@ -60,18 +60,28 @@ const deliverables = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const { isSignedIn, userId } = useOutletContext<AuthContext>();
+  const { getAuthSnapshot } = useOutletContext<AuthContext>();
 
   const handleUploadComplete = useCallback(
     (base64Data: string, file: File) => {
-      if (!isSignedIn || !userId) {
+      const currentAuth = getAuthSnapshot();
+
+      if (
+        currentAuth.isAuthTransitioning ||
+        !currentAuth.isSignedIn ||
+        !currentAuth.userId
+      ) {
         throw new Error("Sign in before creating an upload session.");
       }
 
-      const upload = createFloorPlanUploadSession(base64Data, file, userId);
+      const upload = createFloorPlanUploadSession(
+        base64Data,
+        file,
+        currentAuth.userId,
+      );
       navigate(`/visualizer/${upload.id}`);
     },
-    [isSignedIn, navigate, userId],
+    [getAuthSnapshot, navigate],
   );
 
   return (

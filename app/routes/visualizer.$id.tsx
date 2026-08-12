@@ -25,17 +25,16 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Visualizer({ params }: Route.ComponentProps) {
-  const { isAuthReady, isSignedIn, userId } =
+  const { isAuthReady, isAuthTransitioning, isSignedIn, userId } =
     useOutletContext<AuthContext>();
   const storedUpload =
-    isAuthReady && isSignedIn && userId
-      ? getFloorPlanUploadSession(params.id)
+    isAuthReady && !isAuthTransitioning && isSignedIn && userId
+      ? getFloorPlanUploadSession(params.id, userId)
       : null;
-  const upload =
-    storedUpload?.ownerUserId === userId ? storedUpload : null;
+  const upload = storedUpload;
 
   if (!upload) {
-    const emptyState = !isAuthReady
+    const emptyState = !isAuthReady || isAuthTransitioning
       ? {
           eyebrow: "Checking access",
           title: "Preparing your workspace.",
@@ -45,7 +44,7 @@ export default function Visualizer({ params }: Route.ComponentProps) {
         ? {
             eyebrow: "Sign-in required",
             title: "Sign in to view this floor plan.",
-            copy: "Floor-plan previews are private to the Roomie account that uploaded them.",
+            copy: "This local preview is available only while the same Roomie account remains signed in on this page.",
           }
         : {
             eyebrow: "No active upload",
@@ -67,7 +66,7 @@ export default function Visualizer({ params }: Route.ComponentProps) {
           <p className="eyebrow">{emptyState.eyebrow}</p>
           <h1 id="missing-upload-title">{emptyState.title}</h1>
           <p>{emptyState.copy}</p>
-          {isAuthReady ? (
+          {isAuthReady && !isAuthTransitioning ? (
             <Link className="btn btn--primary btn--md" to="/#upload">
               <ArrowLeft /> Back to upload
             </Link>

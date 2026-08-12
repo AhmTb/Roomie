@@ -6,7 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Route } from "./+types/root";
 import {
@@ -14,6 +14,7 @@ import {
   signIn as puterSignIn,
   signOut as puterSignOut,
 } from "../lib/puter.action";
+import { clearFloorPlanUploadSessionsForOwner } from "../lib/upload";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -47,8 +48,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-const DEFAULT_AUTH_STATE = {
+const DEFAULT_AUTH_STATE: AuthState = {
   isAuthReady: false,
+  isAuthTransitioning: false,
   isSignedIn: false,
   userName: null,
   userId: null,
@@ -56,18 +58,42 @@ const DEFAULT_AUTH_STATE = {
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_AUTH_STATE);
+  const authStateRef = useRef<AuthState>(DEFAULT_AUTH_STATE);
+  const authOperationRef = useRef(0);
+  const authMutationInFlightRef = useRef(false);
 
-  const refreshAuth = async () => {
+  const commitAuthState = useCallback((nextState: AuthState) => {
+    authStateRef.current = nextState;
+    setAuthState(nextState);
+  }, []);
+
+  const resolveAuth = useCallback(async (
+    operationId: number,
+    isAuthTransitioning = false,
+  ) => {
+    if (operationId !== authOperationRef.current) {
+      return authStateRef.current.isSignedIn;
+    }
+
     try {
       const user = await getCurrentUser();
 
+      if (operationId !== authOperationRef.current) {
+        return authStateRef.current.isSignedIn;
+      }
+
       if (!user) {
-        setAuthState({ ...DEFAULT_AUTH_STATE, isAuthReady: true });
+        commitAuthState({
+          ...DEFAULT_AUTH_STATE,
+          isAuthReady: true,
+          isAuthTransitioning,
+        });
         return false;
       }
 
-      setAuthState({
+      commitAuthState({
         isAuthReady: true,
+        isAuthTransitioning,
         isSignedIn: !!user,
         userName: user?.username || null,
         userId: user?.uuid || null,
@@ -75,27 +101,93 @@ export default function App() {
       return !!user;
     } catch (error) {
       console.error("Error refreshing auth state:", error);
-      setAuthState({ ...DEFAULT_AUTH_STATE, isAuthReady: true });
+
+      if (operationId === authOperationRef.current) {
+        commitAuthState({
+          ...DEFAULT_AUTH_STATE,
+          isAuthReady: true,
+          isAuthTransitioning,
+        });
+      }
+
       return false;
     }
-  };
-  useEffect(() => {
-    refreshAuth();
-  }, []);
+  }, [commitAuthState]);
 
-  const signIn = async () => {
-    await puterSignIn();
-    return refreshAuth();
-  };
-  
-  const signOut = async () => {
-    await puterSignOut();
-    return refreshAuth();
-  };
+  const refreshAuth = useCallback(() => {
+    if (authMutationInFlightRef.current) {
+      return Promise.resolve(authStateRef.current.isSignedIn);
+    }
+
+    const operationId = ++authOperationRef.current;
+    return resolveAuth(operationId);
+  }, [resolveAuth]);
+
+  const getAuthSnapshot = useCallback(() => authStateRef.current, []);
+
+  useEffect(() => {
+    void refreshAuth();
+  }, [refreshAuth]);
+
+  const signIn = useCallback(async () => {
+    if (authMutationInFlightRef.current) return false;
+
+    authMutationInFlightRef.current = true;
+    const operationId = ++authOperationRef.current;
+    commitAuthState({
+      ...authStateRef.current,
+      isAuthTransitioning: true,
+    });
+
+    try {
+      await puterSignIn();
+      return await resolveAuth(operationId, true);
+    } catch (error) {
+      await resolveAuth(operationId, true);
+      throw error;
+    } finally {
+      authMutationInFlightRef.current = false;
+      commitAuthState({
+        ...authStateRef.current,
+        isAuthTransitioning: false,
+      });
+    }
+  }, [commitAuthState, resolveAuth]);
+
+  const signOut = useCallback(async () => {
+    if (authMutationInFlightRef.current) return false;
+
+    authMutationInFlightRef.current = true;
+    const operationId = ++authOperationRef.current;
+    const previousUserId = authStateRef.current.userId;
+
+    commitAuthState({
+      ...DEFAULT_AUTH_STATE,
+      isAuthReady: true,
+      isAuthTransitioning: true,
+    });
+    if (previousUserId) {
+      clearFloorPlanUploadSessionsForOwner(previousUserId);
+    }
+
+    try {
+      await puterSignOut();
+      return await resolveAuth(operationId, true);
+    } catch (error) {
+      await resolveAuth(operationId, true);
+      throw error;
+    } finally {
+      authMutationInFlightRef.current = false;
+      commitAuthState({
+        ...authStateRef.current,
+        isAuthTransitioning: false,
+      });
+    }
+  }, [commitAuthState, resolveAuth]);
 
   return (<div className="min-h-screen bg-background text-foreground relative z-10">
     <Outlet 
-    context={{...authState, refreshAuth, signIn, signOut}}
+    context={{...authState, refreshAuth, getAuthSnapshot, signIn, signOut}}
     />
   </div>
    );
